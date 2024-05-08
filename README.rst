@@ -69,9 +69,9 @@ Note the only differences between the Linux and Windows versions of the followin
 
     [Windows]
     # Use the fdb driver (Python 3.6/3.7, or Firebird server 2.5.9)
-    firebird+fdb://sysdba:masterkey@localhost/c:/projects/databases/my_project.fdb
+    firebird+fdb://sysdba:masterkey@localhost/c:\\projects\\databases\\my_project.fdb
     # Use the firebird-driver driver (Python 3.8+, Firebird server 3.0 or greater)
-    firebird+firebird://sysdba:masterkey@localhost/c:/projects/databases/my_project.fdb
+    firebird+firebird://sysdba:masterkey@localhost/c:\\projects\\databases\\my_project.fdb
 
 - Firebird server installed remotely using port 3040 and specifying the character set to use
 
@@ -85,9 +85,9 @@ Note the only differences between the Linux and Windows versions of the followin
 
     [Windows]
     # Use the fdb driver (Python 3.6/3.7, or Firebird server 2.5.9)
-    firebird+fdb://sysdba:masterkey@localhost:3040/c:/projects/databases/my_project.fdb?charset=UTF8&fb_library_name=c:/projects/dbclient/fbclient.dll
+    firebird+fdb://sysdba:masterkey@localhost:3040/c:\\projects\\databases\\my_project.fdb?charset=UTF8&fb_library_name=c:\\projects\\dbclient\\fbclient.dll
     # Use the firebird-driver driver (Python 3.8+)
-    firebird+firebird://sysdba:masterkey@localhost:3040/c:/projects/databases/my_project.fdb?charset=UTF8&fb_client_library=c:/projects/dbclient/fbclient.dll
+    firebird+firebird://sysdba:masterkey@localhost:3040/c:\\projects\\databases\\my_project.fdb?charset=UTF8&fb_client_library=c:\\projects\\dbclient\\fbclient.dll
 
 - Firebird embedded server specifying the character set to use
 
@@ -101,9 +101,9 @@ Note the only differences between the Linux and Windows versions of the followin
 
     [Windows]
     # Use the fdb driver (Python 3.6/3.7, or Firebird server 2.5.9)
-    firebird+fdb://sysdba@/c:/projects/databases/my_project.fdb?charset=UTF8&fb_library_name=c:/projects/dbserver/fbclient.dll
+    firebird+fdb://sysdba@/c:\\projects\\databases\\my_project.fdb?charset=UTF8&fb_library_name=c:\\projects\\dbserver\\fbclient.dll
     # Use the firebird-driver driver (Python 3.8+)
-    firebird+firebird://sysdba@/c:/projects/databases/my_project.fdb?charset=UTF8&fb_client_library=c:/projects/dbserver/fbclient.dll
+    firebird+firebird://sysdba@/c:\\projects\\databases\\my_project.fdb?charset=UTF8&fb_client_library=c:\\projects\\dbserver\\fbclient.dll
 
 
 ----
@@ -114,7 +114,7 @@ For example, to connect to an embedded Firebird server using firebird-driver on 
 
 ::
 
-    db_uri = "firebird+firebird://sysdba@/c:/projects/databases/my_project.fdb?charset=UTF8&fb_client_library=c:/projects/databases/fb40_svr/fbclient.dll"
+    db_uri = "firebird+firebird://sysdba@/c:\\projects\\databases\\my_project.fdb?charset=UTF8&fb_client_library=c:\\projects\\databases\\fb40_svr\\fbclient.dll"
     from sqlalchemy import create_engine
     engine = create_engine(db_uri, echo=True)
     
