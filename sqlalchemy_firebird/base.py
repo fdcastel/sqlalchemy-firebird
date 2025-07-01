@@ -377,62 +377,18 @@ class FBTypeCompiler(compiler.GenericTypeCompiler):
     def visit_datetime(self, type_, **kw):
         return self.visit_TIMESTAMP(type_, **kw)
 
-    def _render_string_type(self, type_, name, length_override=None):
-        firebird_3_or_lower = (
-            self.dialect.server_version_info
-            and self.dialect.server_version_info < (4,)
-        )
-
-        length = coalesce(
-            length_override,
-            getattr(type_, "length", None),
-        )
-        charset = getattr(type_, "charset", None)
-        collation = getattr(type_, "collation", None)
-
-        if name in ["BINARY", "VARBINARY", "NCHAR", "NVARCHAR"]:
-            charset = None
-            collation = None
-
-        if name == "NVARCHAR":
-            name = "NATIONAL CHARACTER VARYING"
-
-        if firebird_3_or_lower:
-            if name == "BINARY":
-                name = "CHAR"
-                charset = fb_types.BINARY_CHARSET
-                collation = None
-            elif name == "VARBINARY":
-                name = "VARCHAR"
-                charset = fb_types.BINARY_CHARSET
-                collation = None
-
+    def _render_string_type(
+        self, name: str, length: Optional[int], collation: Optional[str]
+    ) -> str:
         text = name
-        if length is None:
-            if name == "VARBINARY" or (
-                name == "VARCHAR" and charset == fb_types.BINARY_CHARSET
-            ):
-                text = "BLOB SUB_TYPE BINARY"
-                charset = fb_types.BINARY_CHARSET
-                collation = None
-            elif name == "VARCHAR":
-                text = "BLOB SUB_TYPE TEXT"
-            elif name == "NATIONAL CHARACTER VARYING":
-                text = "BLOB SUB_TYPE TEXT"
-                charset = fb_types.NATIONAL_CHARSET
-                collation = None
-
-        text = text + (length and "(%d)" % length or "")
-
-        if charset is not None:
-            text += f" CHARACTER SET {charset}"
-
-        if collation is not None:
-            text += f" COLLATE {collation}"
-
+        if length:
+            text += f"({length})"
+        if collation:
+            text += f' COLLATE "{collation}"'
         return text
-
+    
     def visit_BINARY(self, type_, **kw):
+
         return self._render_string_type(type_, "BINARY")
 
     def visit_VARBINARY(self, type_, **kw):
