@@ -14,7 +14,6 @@ from sqlalchemy.testing.suite import (
     ComponentReflectionTest as _ComponentReflectionTest,
     ComponentReflectionTestExtra as _ComponentReflectionTestExtra,
     CompoundSelectTest as _CompoundSelectTest,
-    DeprecatedCompoundSelectTest as _DeprecatedCompoundSelectTest,
     IdentityColumnTest as _IdentityColumnTest,
     IdentityReflectionTest as _IdentityReflectionTest,
     StringTest as _StringTest,
@@ -254,20 +253,6 @@ class ComponentReflectionTestExtra(_ComponentReflectionTestExtra):
 
 
 class CompoundSelectTest(_CompoundSelectTest):
-    @pytest.mark.skip(reason="Firebird does not support ORDER BY alias")
-    def test_distinct_selectable_in_unions(self):
-        super().test_distinct_selectable_in_unions()
-
-    @pytest.mark.skip(reason="Firebird does not support ORDER BY alias")
-    def test_limit_offset_aliased_selectable_in_unions(self):
-        super().test_limit_offset_aliased_selectable_in_unions()
-
-    @pytest.mark.skip(reason="Firebird does not support ORDER BY alias")
-    def test_plain_union(self):
-        super().test_plain_union()
-
-
-class DeprecatedCompoundSelectTest(_DeprecatedCompoundSelectTest):
     @pytest.mark.skip(reason="Firebird does not support ORDER BY alias")
     def test_distinct_selectable_in_unions(self):
         super().test_distinct_selectable_in_unions()
