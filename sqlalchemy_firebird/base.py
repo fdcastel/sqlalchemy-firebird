@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from packaging import version
 
-from typing import Any, List
+from typing import Any, List, TypedDict
 from typing import Optional
 
 from sqlalchemy import __version__ as SQLALCHEMY_VERSION
@@ -380,9 +380,9 @@ class FBTypeCompiler(compiler.GenericTypeCompiler):
     def _render_string_type(
         self,
         name: str,
-        length: Optional[int],
-        collation: Optional[str],
-        charset: Optional[str],
+        length: Optional[int]=None,
+        collation: Optional[str]=None,
+        charset: Optional[str]=None,
     ) -> str:
         firebird_3_or_lower = (
             self.dialect.server_version_info
@@ -550,7 +550,7 @@ class FBExecutionContext(default.DefaultExecutionContext):
         )
 
 
-class ReflectedDomain(util.typing.TypedDict):
+class ReflectedDomain(TypedDict):
     """Represents a reflected domain."""
 
     name: str
