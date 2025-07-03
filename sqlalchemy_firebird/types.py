@@ -15,103 +15,157 @@ NATIONAL_CHARSET = "ISO8859_1"
 class _FBString(sqltypes.String):
     render_bind_cast = True
 
-    def __init__(self, length=None, charset=None, collation=None):
-        super().__init__(length, collation)
+    def __init__(self, charset: Optional[str] = None, **kw: Any):
         self.charset = charset
+        # Only pass parameters that the parent String class accepts
+        string_kwargs = {}
+        if 'length' in kw:
+            string_kwargs['length'] = kw['length']
+        if 'collation' in kw:
+            string_kwargs['collation'] = kw['collation']
+        super().__init__(**string_kwargs)
 
 
-class FBCHAR(_FBString):
+class FBCHAR(_FBString, sqltypes.CHAR):
     __visit_name__ = "CHAR"
 
-    def __init__(self, length=None, charset=None, collation=None):
-        super().__init__(length, charset, collation)
+    def __init__(self, length: Optional[int] = None, **kwargs: Any):
+        super().__init__(length=length, **kwargs)
 
 
 class FBBINARY(FBCHAR):
     __visit_name__ = "BINARY"
 
     # Synonym for CHAR(n) CHARACTER SET OCTETS
-    def __init__(self, length=None, charset=None, collation=None):
-        super().__init__(length, BINARY_CHARSET)
+    def __init__(self, length: Optional[int] = None, **kwargs: Any):
+        kwargs["charset"] = BINARY_CHARSET
+        super().__init__(length=length, **kwargs)
 
 
-class FBNCHAR(FBCHAR):
+class FBNCHAR(FBCHAR, sqltypes.NCHAR):
     __visit_name__ = "NCHAR"
 
     # Synonym for CHAR(n) CHARACTER SET ISO8859_1
-    def __init__(self, length=None, charset=None, collation=None):
-        super().__init__(length, NATIONAL_CHARSET)
+    def __init__(self, length: Optional[int] = None, **kwargs: Any):
+        kwargs["charset"] = NATIONAL_CHARSET
+        super().__init__(length=length, **kwargs)
 
 
-class FBVARCHAR(_FBString):
+class FBVARCHAR(_FBString, sqltypes.VARCHAR):
     __visit_name__ = "VARCHAR"
 
-    def __init__(self, length=None, charset=None, collation=None):
-        super().__init__(length, charset, collation)
+    def __init__(self, length: Optional[int] = None, **kwargs: Any):
+        super().__init__(length=length, **kwargs)
 
 
 class FBVARBINARY(FBVARCHAR):
     __visit_name__ = "VARBINARY"
 
     # Synonym for VARCHAR(n) CHARACTER SET OCTETS
-    def __init__(self, length=None, charset=None, collation=None):
-        super().__init__(length, BINARY_CHARSET)
+    def __init__(self, length: Optional[int] = None, **kwargs: Any):
+        kwargs["charset"] = BINARY_CHARSET
+        super().__init__(length=length, **kwargs)
 
 
-class FBNVARCHAR(FBVARCHAR):
+class FBNVARCHAR(FBVARCHAR, sqltypes.NVARCHAR):
     __visit_name__ = "NVARCHAR"
 
     # Synonym for VARCHAR(n) CHARACTER SET ISO8859_1
-    def __init__(self, length=None, charset=None, collation=None):
-        super().__init__(length, NATIONAL_CHARSET)
+    def __init__(self, length: Optional[int] = None, **kwargs: Any):
+        kwargs["charset"] = NATIONAL_CHARSET
+        super().__init__(length=length, **kwargs)
 
 
-class _FBNumeric(sqltypes.Numeric):
+class FBFLOAT(sqltypes.FLOAT):
+    __visit_name__ = "FLOAT"
     render_bind_cast = True
+
+    def __init__(self, precision=None, **kwargs):
+        # FLOAT doesn't accept 'scale' parameter, filter it out
+        float_kwargs = {k: v for k, v in kwargs.items() if k != 'scale'}
+        # Set precision if provided
+        if precision is not None:
+            float_kwargs['precision'] = precision
+        # Provide defaults for required parameters
+        float_kwargs.setdefault("precision", None)
+        float_kwargs.setdefault("decimal_return_scale", None)
+        float_kwargs.setdefault("asdecimal", False)
+        super().__init__(**float_kwargs)
 
     def bind_processor(self, dialect):
         return None  # Dialect supports_native_decimal = True (no processor needed)
 
 
-class FBFLOAT(_FBNumeric, sqltypes.FLOAT):
-    __visit_name__ = "FLOAT"
-
-
-class FBDOUBLE_PRECISION(_FBNumeric, sqltypes.DOUBLE_PRECISION):
+class FBDOUBLE_PRECISION(sqltypes.DOUBLE_PRECISION):
     __visit_name__ = "DOUBLE_PRECISION"
+    render_bind_cast = True
+
+    def __init__(self, precision=None, **kwargs):
+        # DOUBLE_PRECISION doesn't accept 'scale' parameter, filter it out
+        float_kwargs = {k: v for k, v in kwargs.items() if k != 'scale'}
+        # Set precision if provided
+        if precision is not None:
+            float_kwargs['precision'] = precision
+        # Provide defaults for required parameters
+        float_kwargs.setdefault("precision", None)
+        float_kwargs.setdefault("decimal_return_scale", None)
+        float_kwargs.setdefault("asdecimal", False)
+        super().__init__(**float_kwargs)
+
+    def bind_processor(self, dialect):
+        return None  # Dialect supports_native_decimal = True (no processor needed)
 
 
-class FBDECFLOAT(_FBNumeric):
+class FBDECFLOAT(sqltypes.Numeric):
     __visit_name__ = "DECFLOAT"
+    render_bind_cast = True
+
+    def __init__(self, precision=None, **kwargs):
+        # DECFLOAT (Numeric) accepts all parameters
+        if precision is not None:
+            kwargs['precision'] = precision
+        kwargs.setdefault("precision", None)
+        kwargs.setdefault("scale", None)
+        kwargs.setdefault("decimal_return_scale", None)
+        kwargs.setdefault("asdecimal", False)
+        super().__init__(**kwargs)
+
+    def bind_processor(self, dialect):
+        return None  # Dialect supports_native_decimal = True (no processor needed)
 
 
 class FBREAL(FBFLOAT):
     __visit_name__ = "REAL"
 
-    # Synonym for FLOAT
-    def __init__(self, precision=None, scale=None):
-        super().__init__(None, None)
 
-
-class _FBFixedPoint(_FBNumeric):
-    def __init__(
-        self,
-        precision=None,
-        scale=None,
-        decimal_return_scale=None,
-        asdecimal=None,
-    ):
-        super().__init__(
-            precision, scale, decimal_return_scale, asdecimal=True
-        )
-
-
-class FBDECIMAL(_FBFixedPoint):
+class FBDECIMAL(sqltypes.DECIMAL):
     __visit_name__ = "DECIMAL"
+    render_bind_cast = True
+
+    def __init__(self, **kwargs: Any):
+        kwargs["asdecimal"] = True
+        kwargs.setdefault("precision", None)
+        kwargs.setdefault("scale", None)
+        kwargs.setdefault("decimal_return_scale", None)
+        super().__init__(**kwargs)
+
+    def bind_processor(self, dialect):
+        return None  # Dialect supports_native_decimal = True (no processor needed)
 
 
-class FBNUMERIC(_FBFixedPoint):
+class FBNUMERIC(sqltypes.NUMERIC):
     __visit_name__ = "NUMERIC"
+    render_bind_cast = True
+
+    def __init__(self, **kwargs: Any):
+        kwargs.setdefault("asdecimal", True)
+        kwargs.setdefault("precision", None)
+        kwargs.setdefault("scale", None)
+        kwargs.setdefault("decimal_return_scale", None)
+        super().__init__(**kwargs)
+
+    def bind_processor(self, dialect):
+        return None  # Dialect supports_native_decimal = True (no processor needed)
 
 
 class FBDATE(sqltypes.DATE):
@@ -191,10 +245,12 @@ class FBTEXT(_FBLargeBinary, sqltypes.TEXT):
         super().__init__(1, segment_size, charset, collation)
 
 
-class _FBNumericInterval(_FBNumeric):
+class _FBNumericInterval(FBNUMERIC):
     # NUMERIC(18,9) -- Used for _FBInterval storage
-    def __init__(self):
-        super().__init__(precision=18, scale=9)
+    def __init__(self, **kwargs: Any):
+        kwargs["precision"] = 18
+        kwargs["scale"] = 9
+        super().__init__(**kwargs)
 
 
 class _FBInterval(sqltypes.Interval):

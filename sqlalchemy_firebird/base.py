@@ -623,7 +623,7 @@ class FBDialect(default.DefaultDialect):
 
     colspecs = {
         sa_types.String: fb_types._FBString,
-        sa_types.Numeric: fb_types._FBNumeric,
+        sa_types.Numeric: fb_types.FBNUMERIC,
         sa_types.Float: fb_types.FBFLOAT,
         sa_types.Double: fb_types.FBDOUBLE_PRECISION,
         sa_types.Date: fb_types.FBDATE,
@@ -875,7 +875,7 @@ class FBDialect(default.DefaultDialect):
                     charset=row.character_set_name,
                     collation=row.collation_name,
                 )
-            elif issubclass(colclass, fb_types._FBNumeric):
+            elif colclass in (fb_types.FBFLOAT, fb_types.FBDOUBLE_PRECISION, fb_types.FBDECFLOAT):
                 # FLOAT, DOUBLE PRECISION or DECFLOAT
                 coltype = colclass(row.field_precision)
             elif issubclass(colclass, fb_types._FBInteger):
