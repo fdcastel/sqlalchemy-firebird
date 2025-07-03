@@ -6,10 +6,11 @@ import sqlalchemy as sa
 from packaging import version
 from sqlalchemy import __version__ as SQLALCHEMY_VERSION
 from sqlalchemy import Index
-from sqlalchemy.testing import is_false
+from sqlalchemy.testing import config, is_false
 from sqlalchemy.testing.suite import *  # noqa: F401, F403
 
 from sqlalchemy.testing.suite import (
+    BizarroCharacterTest as _BizarroCharacterTest,
     CTETest as _CTETest,
     ComponentReflectionTest as _ComponentReflectionTest,
     ComponentReflectionTestExtra as _ComponentReflectionTestExtra,
@@ -20,8 +21,17 @@ from sqlalchemy.testing.suite import (
     InsertBehaviorTest as _InsertBehaviorTest,
     RowCountTest as _RowCountTest,
     SimpleUpdateDeleteTest as _SimpleUpdateDeleteTest,
+    TempTableElementsTest as _TempTableElementsTest,
+    WindowFunctionTest as _WindowFunctionTest
 )
 
+
+@pytest.mark.skipif(
+    config.db.dialect.server_version_info < (4,),
+    reason="These tests rely on correct identity semantics, which were only fixed starting from Firebird 4.0."
+)
+class BizarroCharacterTest(_BizarroCharacterTest):
+    pass
 
 @pytest.mark.skip(
     reason="These tests fails in Firebird because a DELETE FROM <table> with self-referencing FK raises integrity errors."
@@ -425,3 +435,27 @@ class SimpleUpdateDeleteTest(_SimpleUpdateDeleteTest):
     @testing.requires.delete_returning
     def test_delete_returning(self, connection, criteria):
         super().test_delete_returning(connection, criteria)
+
+class TempTableElementsTest(_TempTableElementsTest):    
+    @testing.requires.identity_columns
+    def test_reflect_identity(self, tablename, connection, metadata):
+        Table(
+            tablename,
+            metadata,
+            Column("id", Integer, Identity(), primary_key=True),
+        )
+        metadata.create_all(connection)
+        insp = inspect(connection)
+
+        # Fix this test to work with Firebird 3 identity semantics.
+        firebird_4_or_higher = config.db.dialect.server_version_info >= (4, 0)
+
+        expected = 1 if firebird_4_or_higher else 0
+        eq_(insp.get_columns(tablename)[0]["identity"]["start"], expected)
+
+
+class WindowFunctionTest(_WindowFunctionTest):
+    # This test requires window functions not available in Firebird 3.
+    @testing.requires.firebird_4_or_higher
+    def test_window_rows_between_w_caching(self, connection):
+        super().test_window_rows_between_w_caching(connection)
