@@ -204,45 +204,32 @@ class FBBOOLEAN(sqltypes.BOOLEAN):
     render_bind_cast = True
 
 
-class _FBLargeBinary(sqltypes.LargeBinary):
+class FBBLOB(sqltypes.BLOB):
+    __visit_name__ = "BLOB"  # BLOB SUB_TYPE 0 (BINARY)
     render_bind_cast = True
 
-    def __init__(
-        self, subtype=None, segment_size=None, charset=None, collation=None
-    ):
+    def __init__(self, segment_size=None):
         super().__init__()
-        self.subtype = subtype
+        self.subtype = 0
         self.segment_size = segment_size
-        self.charset = charset
-        self.collation = collation
 
     def bind_processor(self, dialect):
         def process(value):
-            return None if value is None else bytes(value)
+            return bytes(value)
 
         return process
 
 
-class FBBLOB(_FBLargeBinary, sqltypes.BLOB):
-    __visit_name__ = "BLOB"
+class FBTEXT(sqltypes.TEXT):
+    __visit_name__ = "BLOB"  # BLOB SUB_TYPE 1 (TEXT)
+    render_bind_cast = True
 
-    def __init__(
-        self,
-        segment_size=None,
-    ):
-        super().__init__(0, segment_size)
-
-
-class FBTEXT(_FBLargeBinary, sqltypes.TEXT):
-    __visit_name__ = "BLOB"
-
-    def __init__(
-        self,
-        segment_size=None,
-        charset=None,
-        collation=None,
-    ):
-        super().__init__(1, segment_size, charset, collation)
+    def __init__(self, segment_size=None, charset=None, collation=None):
+        super().__init__()
+        self.subtype = 1
+        self.segment_size = segment_size
+        self.charset = charset
+        self.collation = collation
 
 
 class _FBNumericInterval(FBNUMERIC):

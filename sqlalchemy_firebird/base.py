@@ -636,14 +636,14 @@ class FBDialect(default.DefaultDialect):
         sa_types.BigInteger: fb_types.FBBIGINT,
         sa_types.Integer: fb_types.FBINTEGER,
         sa_types.SmallInteger: fb_types.FBSMALLINT,
-        sa_types.BINARY: fb_types._FBLargeBinary,
-        sa_types.VARBINARY: fb_types._FBLargeBinary,
-        sa_types.LargeBinary: fb_types._FBLargeBinary,
+        sa_types.BINARY: fb_types.FBBINARY,
+        sa_types.VARBINARY: fb_types.FBVARBINARY,
+        sa_types.LargeBinary: fb_types.FBBLOB,
     }
 
     # SELECT TRIM(rdb$type_name) FROM rdb$types WHERE rdb$field_name = 'RDB$FIELD_TYPE' ORDER BY 1
     ischema_names = {
-        "BLOB": fb_types._FBLargeBinary,
+        "BLOB": fb_types.FBBLOB,
         # "BLOB_ID": unused
         "BOOLEAN": fb_types.FBBOOLEAN,
         "CSTRING": fb_types.FBVARCHAR,
@@ -899,13 +899,9 @@ class FBDialect(default.DefaultDialect):
             elif issubclass(colclass, sa_types.DateTime):
                 has_timezone = "WITH TIME ZONE" in row.field_type
                 coltype = colclass(timezone=has_timezone)
-            elif issubclass(colclass, fb_types._FBLargeBinary):
+            elif issubclass(colclass, fb_types.FBBLOB):
                 if row.field_sub_type == 1:
-                    coltype = fb_types.FBTEXT(
-                        row.segment_length,
-                        row.character_set_name,
-                        row.collation_name,
-                    )
+                    coltype = fb_types.FBTEXT(row.segment_length, row.character_set_name, row.collation_name)
                 else:
                     coltype = fb_types.FBBLOB(row.segment_length)
             else:
