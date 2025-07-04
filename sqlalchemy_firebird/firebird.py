@@ -19,6 +19,7 @@ from .base import FBDialect
 import firebird.driver
 from firebird.driver import driver_config
 from firebird.driver import get_timezone
+from firebird.driver.types import DatabaseError;
 
 
 class FBDialect_firebird(FBDialect):
@@ -63,7 +64,13 @@ class FBDialect_firebird(FBDialect):
         return connection.deferrable
 
     def do_terminate(self, dbapi_connection) -> None:
-        dbapi_connection.terminate()
+        try:
+            dbapi_connection.close()                
+        except DatabaseError as err:
+            # Ignore errors during connection termination, as the connection may already be in an invalid state.
+            #   https://github.com/pauldex/sqlalchemy-firebird/issues/72
+            if not self.is_disconnect(err, None, None):
+                raise
 
     def create_connect_args(self, url):
         opts = url.translate_connect_args(username="user")
