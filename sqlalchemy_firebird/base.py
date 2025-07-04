@@ -377,7 +377,7 @@ class FBTypeCompiler(compiler.GenericTypeCompiler):
     def visit_datetime(self, type_, **kw):
         return self.visit_TIMESTAMP(type_, **kw)
 
-    def _render_string_type(
+    def _render_firebird_string_type(
         self,
         name: str,
         length: Optional[int]=None,
@@ -432,7 +432,7 @@ class FBTypeCompiler(compiler.GenericTypeCompiler):
         return text
 
     def visit_CHAR(self, type_: fb_types.FBCHAR, **kw: Any) -> str:
-        return self._render_string_type(
+        return self._render_firebird_string_type(
             "CHAR",
             type_.length,
             type_.collation,
@@ -440,21 +440,24 @@ class FBTypeCompiler(compiler.GenericTypeCompiler):
         )
 
     def visit_NCHAR(self, type_: fb_types.FBNCHAR, **kw: Any) -> str:
-        return self._render_string_type("NCHAR", type_.length, type_.collation)
+        return self._render_firebird_string_type("NCHAR", type_.length, type_.collation)
 
     def visit_VARCHAR(self, type_: fb_types.FBVARCHAR, **kw: Any) -> str:
-        return self._render_string_type(
+        return self._render_firebird_string_type(
             "VARCHAR",
             type_.length,
             type_.collation,
             getattr(type_, "charset", None),
         )
+    
+    def visit_NVARCHAR(self, type_: fb_types.FBNCHAR, **kw: Any) -> str:
+        return self._render_firebird_string_type("NVARCHAR", type_.length, type_.collation)
 
     def visit_BINARY(self, type_: fb_types.FBBINARY, **kw) -> str:
-        return self._render_string_type("BINARY", type_.length)
+        return self._render_firebird_string_type("BINARY", type_.length)
 
     def visit_VARBINARY(self, type_: fb_types.FBVARBINARY, **kw) -> str:
-        return self._render_string_type("VARBINARY", type_.length)
+        return self._render_firebird_string_type("VARBINARY", type_.length)
 
     def visit_TEXT(self, type_, **kw):
         return self.visit_BLOB(type_, override_subtype=1, **kw)
