@@ -422,7 +422,11 @@ class FBTypeCompiler(compiler.GenericTypeCompiler):
                 charset = fb_types.NATIONAL_CHARSET
                 collation = None
 
-        text = text + (length and "(%d)" % length or "")
+        if length == 'NONE':
+            length = 0
+            text = str(text + (length and "(%d)" % length))
+        else:
+            text = text + (length and "(%d)" % length or "")
 
         if charset is not None:
             text += f" CHARACTER SET {charset}"
