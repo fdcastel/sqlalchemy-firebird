@@ -21,6 +21,9 @@ from sqlalchemy.testing import fixtures
 from sqlalchemy.testing.assertions import AssertsCompiledSQL
 from sqlalchemy.testing.assertions import AssertsExecutionResults
 from sqlalchemy.testing.assertions import eq_
+from sqlalchemy.engine.url import make_url
+from firebird.driver import driver_config
+from sqlalchemy_firebird.firebird import FBDialect_firebird
 
 
 class ConnectionTest(fixtures.TablesTest):
@@ -264,3 +267,39 @@ class MiscBackendTest(
             "SELECT 1 FROM rdb$database UNION ALL SELECT 2 FROM rdb$database"
         )
         eq_(cursor.rowcount, 0)
+
+
+class CreateConnectArgsTest(fixtures.TestBase):
+    def test_issue_69_same_host_distinct_ports(self):
+        # Two servers on the same host with different ports must produce
+        # distinct driver_config server registrations (issue #69).
+        dialect = FBDialect_firebird()
+
+        dialect.create_connect_args(
+            make_url("firebird+firebird://u:p@myhost:3050/db_a")
+        )
+        dialect.create_connect_args(
+            make_url("firebird+firebird://u:p@myhost:3051/db_b")
+        )
+
+        srv_a = driver_config.get_server("myhost:3050")
+        srv_b = driver_config.get_server("myhost:3051")
+        assert srv_a is not None and srv_b is not None
+        assert srv_a is not srv_b
+        eq_(srv_a.host.value, "myhost")
+        eq_(srv_b.host.value, "myhost")
+        eq_(srv_a.port.value, "3050")
+        eq_(srv_b.port.value, "3051")
+
+        db_a = driver_config.get_database("db_a")
+        db_b = driver_config.get_database("db_b")
+        eq_(db_a.server.value, "myhost:3050")
+        eq_(db_b.server.value, "myhost:3051")
+
+    def test_default_port_when_omitted(self):
+        FBDialect_firebird().create_connect_args(
+            make_url("firebird+firebird://u:p@otherhost/db_c")
+        )
+        srv = driver_config.get_server("otherhost:3050")
+        assert srv is not None
+        eq_(srv.port.value, "3050")
