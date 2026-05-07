@@ -71,36 +71,26 @@ To activate the virtual environment use:
 
 ## Preparing the tests infrastructure
 
-With the virtual environment activated, run the following script
+The test runner provisions a self-contained Firebird tree on demand using the [PSFirebird](https://github.com/fdcastel/PSFirebird) PowerShell module. PSFirebird downloads the requested Firebird version into a folder under your system temp directory, creates a fresh database file there, and never touches `PATH` or the registry.
 
-```
-rebuild-test-databases
-```
-
-This script will 
-
-- Create a `sqlalchemy-firebird-tests` in your temp folder containing the binaries for each supported Firebird version;
-- Create databases for each Firebird version; and
-- Add a `[db]` section into your `setup.cfg` containing one entry for each of the databases created.
-
-You may run this script whenever you need a clean database for your tests. It won't download the files again if they already exist.
+The first time `run-tests.ps1` runs it installs PSFirebird from the PowerShell Gallery if it is not already present.
 
 
 ## Running the tests
 
-Run the following Powershell script
+Run the test suite against a specific Firebird version with:
 
 ```powershell
-.\run-all-tests.ps1
+.\run-tests.ps1 -FirebirdVersion 5.0.4
 ```
 
-This will start 5 different processes, each one running a different combination of driver/Firebird version supported.
-
-To run only the tests for a specific database, use
+Supply a custom environment folder or extra pytest arguments as needed:
 
 ```powershell
-.\run-tests.ps1 -Database 'firebird_fb50'
+.\run-tests.ps1 -FirebirdVersion 4.0.7 -EnvironmentPath C:\fb-test\fb40 -PytestArgs '-k', 'test_get_table_names'
 ```
+
+CI runs the same script across Firebird 3.0.x, 4.0.x and 5.0.x; see `.github/workflows/test.yml` for the matrix.
 
 
 ## Debugging the tests
@@ -109,10 +99,10 @@ SQLAlchemy has a complex test infrastructure which unfortunately is not complete
 
 To run a specific test under VSCode debugger this repository already provides a `.vscode/launch.json` file preconfigured as a sample.
 
-E.g. to run the test `test_get_table_names` with `firebird-driver` and Firebird 5.0 you must set `pytest` arguments as:
+E.g. to run the test `test_get_table_names` against a previously-provisioned Firebird 5.0 environment you must set `pytest` arguments as:
 
 ```json
-"args": ["./test/test_suite.py::NormalizedNameTest::test_get_table_names", "--db", "firebird_fb50"],
+"args": ["./test/test_suite.py::NormalizedNameTest::test_get_table_names", "--dburi", "firebird+firebird://sysdba@/<full-path-to-test.fdb>?charset=UTF8&fb_client_library=<full-path-to-fbclient.dll>"],
 ```
 
 Now run the code (with `F5`) and the debugger should work as expected (e.g. set a breakpoint and it should stop).
