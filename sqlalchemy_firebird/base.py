@@ -325,7 +325,7 @@ class FBDDLCompiler(sql.compiler.DDLCompiler):
         )
 
     def get_identity_options(self, identity_options):
-        firebird_3_or_lower = (
+        firebird_3 = (
             self.dialect.server_version_info
             and self.dialect.server_version_info < (4,)
         )
@@ -341,21 +341,21 @@ class FBDDLCompiler(sql.compiler.DDLCompiler):
 
             txt.append("START WITH %d" % start)
 
-        if not firebird_3_or_lower:
+        if not firebird_3:
             if identity_options.increment is not None:
                 txt.append("INCREMENT BY %d" % identity_options.increment)
 
         return " ".join(txt)
 
     def visit_identity_column(self, identity, **kw):
-        firebird_3_or_lower = (
+        firebird_3 = (
             self.dialect.server_version_info
             and self.dialect.server_version_info < (4,)
         )
 
         kind = (
             "ALWAYS"
-            if identity.always and (not firebird_3_or_lower)
+            if identity.always and (not firebird_3)
             else "BY DEFAULT"
         )
         text = "GENERATED %s AS IDENTITY" % kind
@@ -369,9 +369,6 @@ class FBDDLCompiler(sql.compiler.DDLCompiler):
 
 class FBTypeCompiler(compiler.GenericTypeCompiler):
     def visit_boolean(self, type_, **kw):
-        if self.dialect.server_version_info < (3,):
-            return self.visit_SMALLINT(type_, **kw)
-
         return self.visit_BOOLEAN(type_, **kw)
 
     def visit_datetime(self, type_, **kw):
@@ -384,7 +381,7 @@ class FBTypeCompiler(compiler.GenericTypeCompiler):
         collation: Optional[str]=None,
         charset: Optional[str]=None,
     ) -> str:
-        firebird_3_or_lower = (
+        firebird_3 = (
             self.dialect.server_version_info
             and self.dialect.server_version_info < (4,)
         )
@@ -396,7 +393,7 @@ class FBTypeCompiler(compiler.GenericTypeCompiler):
         if name == "NVARCHAR":
             name = "NATIONAL CHARACTER VARYING"
 
-        if firebird_3_or_lower:
+        if firebird_3:
             if name == "BINARY":
                 name = "CHAR"
                 charset = fb_types.BINARY_CHARSET
@@ -591,7 +588,7 @@ class FBDialect(default.DefaultDialect):
     supports_sane_rowcount = True
     supports_sane_multi_rowcount = False
 
-    supports_native_boolean = True  # False for Firebird 2.5
+    supports_native_boolean = True
     supports_native_decimal = True
 
     supports_schemas = False
@@ -604,7 +601,7 @@ class FBDialect(default.DefaultDialect):
     supports_default_values = True
     supports_default_metavalue = True
     supports_empty_insert = False
-    supports_identity_columns = True  # False for Firebird 2.5
+    supports_identity_columns = True
 
     statement_compiler = FBCompiler
     ddl_compiler = FBDDLCompiler
@@ -686,13 +683,7 @@ class FBDialect(default.DefaultDialect):
     def initialize(self, connection):
         super().initialize(connection)
 
-        if self.server_version_info < (3,):
-            # Firebird 2.5
-            from .fb_info25 import MAX_IDENTIFIER_LENGTH, RESERVED_WORDS
-
-            self.supports_identity_columns = False
-            self.supports_native_boolean = False
-        elif self.server_version_info < (4,):
+        if self.server_version_info < (4,):
             # Firebird 3.0
             from .fb_info30 import MAX_IDENTIFIER_LENGTH, RESERVED_WORDS
         else:
@@ -814,36 +805,27 @@ class FBDialect(default.DefaultDialect):
                    TRIM(cl.rdb$collation_name) as collation_name,
                    COALESCE(rf.rdb$default_source, f.rdb$default_source) AS default_source,
                    TRIM(rf.rdb$description) AS description,
-                   f.rdb$computed_source AS computed_source
-                  ,rf.rdb$identity_type AS identity_type,                      -- [fb3+]
-                   g.rdb$initial_value AS initial_value,                       -- [fb3+]
-                   g.rdb$generator_increment AS generator_increment            -- [fb3+]
+                   f.rdb$computed_source AS computed_source,
+                   rf.rdb$identity_type AS identity_type,
+                   g.rdb$initial_value AS initial_value,
+                   g.rdb$generator_increment AS generator_increment
             FROM rdb$relation_fields rf
                  JOIN rdb$fields f
                    ON f.rdb$field_name = rf.rdb$field_source
                  JOIN rdb$types t
-                   ON t.rdb$type = f.rdb$field_type 
+                   ON t.rdb$type = f.rdb$field_type
                   AND t.rdb$field_name = 'RDB$FIELD_TYPE'
                  LEFT JOIN rdb$character_sets cs
                         ON cs.rdb$character_set_id = f.rdb$character_set_id
                  LEFT JOIN rdb$collations cl
                         ON cl.rdb$collation_id = rf.rdb$collation_id
                        AND cl.rdb$character_set_id = cs.rdb$character_set_id
-                 LEFT JOIN rdb$generators g                                    -- [fb3+]
-                        ON g.rdb$generator_name = rf.rdb$generator_name        -- [fb3+]
+                 LEFT JOIN rdb$generators g
+                        ON g.rdb$generator_name = rf.rdb$generator_name
             WHERE COALESCE(f.rdb$system_flag, 0) = 0
               AND rf.rdb$relation_name = ?
             ORDER BY rf.rdb$field_position
         """
-
-        is_firebird_25 = self.server_version_info < (3,)
-        has_identity_columns = not is_firebird_25
-        if not has_identity_columns:
-            # Firebird 2.5 doesn't have RDB$GENERATOR_NAME nor RDB$IDENTITY_TYPE in RDB$RELATION_FIELDS
-            #   Remove query lines containing [fb3+]
-            lines = str.splitlines(columns_query)
-            filtered = filter(lambda x: "[fb3+]" not in x, lines)
-            columns_query = "\r\n".join(list(filtered))
 
         tablename = self.denormalize_name(table_name)
         c = list(connection.exec_driver_sql(columns_query, (tablename,)))
@@ -937,22 +919,14 @@ class FBDialect(default.DefaultDialect):
             if row.description is not None:
                 col_d["comment"] = row.description
 
-            if has_identity_columns:
-                if row.identity_type is not None:
-                    col_d["identity"] = {
-                        "always": row.identity_type == 0,
-                        "start": row.initial_value,
-                        "increment": row.generator_increment,
-                    }
+            if row.identity_type is not None:
+                col_d["identity"] = {
+                    "always": row.identity_type == 0,
+                    "start": row.initial_value,
+                    "increment": row.generator_increment,
+                }
 
-                col_d["autoincrement"] = "identity" in col_d
-            else:
-                # For Firebird 2.5
-
-                # A backend is better off not returning "autoincrement" at all,
-                # instead of potentially returning "False" for an auto-incrementing
-                # primary key column. (see test_autoincrement_col)
-                pass
+            col_d["autoincrement"] = "identity" in col_d
 
             cols.append(col_d)
 
@@ -1285,10 +1259,9 @@ class FBDialect(default.DefaultDialect):
         ]
 
     def is_disconnect(self, e, connection, cursor):
-        is_fdb = self.driver == "fdb"
         if isinstance(e, (self.dbapi.DatabaseError)):
-            sqlcode = e.args[1] if is_fdb else e.sqlcode
-            gdscode = e.args[2] if is_fdb else e.gds_codes[0]
+            sqlcode = e.sqlcode
+            gdscode = e.gds_codes[0]
             return sqlcode == -902 and gdscode in (
                 335544726,  # net_read_err     Error reading data from the connection
                 335544727,  # net_write_err    Error writing data to the connection
