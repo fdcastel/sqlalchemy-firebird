@@ -7,35 +7,21 @@ markers = [
 
 python_files = "test/*test_*.py"
 
-# SQLAlchemy-Firebird configuration for Black.
-[tool.black]
-line-length = 79
-target-version = ['py37']
-include = '\.pyi?$'
-exclude = '''
-/(
-    \.github
-    | \.pytest_cache
-    | _venv
-)/
-'''
-
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "sqlalchemy-firebird"
 description = "Firebird for SQLAlchemy"
-requires-python = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*, !=3.5.*"
-keywords = ["SQLAlchemy", "Firebird", "fdb", "firebird-driver"]
+requires-python = ">=3.9"
+keywords = ["SQLAlchemy", "Firebird", "firebird-driver"]
 license = {file = "LICENSE"}
 authors = [
-    {name = "Paul Graves-DesLauriers", email="paul@dexmicro.com"},
-    {name = "F.D.Castel"},
+    {name = "F.D.Castel", email = "fdcastel@gmail.com"},
 ]
 maintainers = [
-    {name = "Paul Graves-DesLauriers", email="paul@dexmicro.com"},
+    {name = "F.D.Castel", email = "fdcastel@gmail.com"},
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -43,37 +29,45 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: Implementation :: CPython",
     "Topic :: Database :: Front-Ends",
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "SQLAlchemy >= 1.4, < 2.0; python_version < '3.8'",
-    "fdb; python_version < '3.8'",
-    "SQLAlchemy >= 2.0; python_version >= '3.8'",
-    "firebird-driver; python_version >= '3.8'",
+    "SQLAlchemy >= 2.0",
+    "firebird-driver",
     "packaging",
 ]
 dynamic = ["readme", "version"]
 
-[project.optional-dependencies]
-dev = ["pytest", "black", "flake8", "build", "twine"]
-test = ["pytest"]
+[dependency-groups]
+dev = ["pytest", "ruff"]
 
 [project.urls]
-Documentation = "https://github.com/pauldex/sqlalchemy-firebird/wiki"
-Source = "https://github.com/pauldex/sqlalchemy-firebird"
-Tracker = "https://github.com/pauldex/sqlalchemy-firebird/issues"
+Documentation = "https://github.com/fdcastel/sqlalchemy-firebird/wiki"
+Source = "https://github.com/fdcastel/sqlalchemy-firebird"
+Tracker = "https://github.com/fdcastel/sqlalchemy-firebird/issues"
 
 [project.entry-points."sqlalchemy.dialects"]
 "firebird" = "sqlalchemy_firebird.firebird:FBDialect_firebird"
-"firebird.fdb" = "sqlalchemy_firebird.fdb:FBDialect_fdb"
 "firebird.firebird" = "sqlalchemy_firebird.firebird:FBDialect_firebird"
 
-[project.scripts]
-prepare-test-environment = "sqlalchemy_firebird:infrastructure.prepare_test_environment"
-rebuild-test-databases = "sqlalchemy_firebird:infrastructure.rebuild_test_databases"
-
 [tool.setuptools.dynamic]
-readme = {file = ["README.rst"], content-type = "text/x-rst"}
-version = {attr = "sqlalchemy_firebird.__version__"}
+readme = {file = ["README.md"], content-type = "text/markdown"}
+
+[tool.setuptools_scm]
+version_file = "sqlalchemy_firebird/_version.py"
+
+[tool.ruff]
+target-version = "py39"
+line-length = 79
+
+[tool.ruff.lint]
+ignore = ["E203", "E266", "E501", "F401", "F403"]
+
+[tool.ruff.format]

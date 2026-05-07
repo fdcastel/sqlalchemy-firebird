@@ -3,4 +3,4 @@
 # <see AUTHORS file>
 #
 # This module is released under the MIT License: http://www.opensource.org/licenses/mit-license.php
-__version__ = "2.1"
+from ._version import __version__  # noqa: F401
