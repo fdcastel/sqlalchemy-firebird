@@ -378,8 +378,7 @@ class Requirements(SuiteRequirements):
     def insert_from_select(self):
         """target platform supports INSERT from a SELECT."""
 
-        # Avoids hanging tests on Firebird 2.5
-        return self.firebird_3_or_higher
+        return exclusions.open()
 
     @property
     def delete_returning(self):
@@ -1695,7 +1694,7 @@ class Requirements(SuiteRequirements):
     def identity_columns(self):
         """If a backend supports GENERATED { ALWAYS | BY DEFAULT }
         AS IDENTITY"""
-        return self.firebird_3_or_higher
+        return exclusions.open()
 
     @property
     def identity_columns_standard(self):
@@ -1703,7 +1702,7 @@ class Requirements(SuiteRequirements):
         AS IDENTITY with a standard syntax.
         This is mainly to exclude MSSql.
         """
-        return self.firebird_3_or_higher
+        return exclusions.open()
 
     @property
     def regexp_match(self):
@@ -1757,8 +1756,7 @@ class Requirements(SuiteRequirements):
         sequence. This should be false only for oracle.
         """
 
-        # Disables entire IdentityAutoincrementTest on Firebird 2.5 (does not have autoincrement)
-        return self.firebird_3_or_higher
+        return exclusions.open()
 
     @property
     def generic_classes(self):
@@ -1804,20 +1802,6 @@ class Requirements(SuiteRequirements):
     #
     # Firebird helpers
     #
-    @property
-    def firebird_3_or_lower(self):
-        return exclusions.skip_if(
-            lambda config: config.db.dialect.server_version_info >= (3, 0),
-            "Only for Firebird 2.5 or 3.0.",
-        )
-
-    @property
-    def firebird_3_or_higher(self):
-        return exclusions.skip_if(
-            lambda config: config.db.dialect.server_version_info < (3,),
-            "Only supported in Firebird 3.0+.",
-        )
-
     @property
     def firebird_4_or_higher(self):
         return exclusions.skip_if(

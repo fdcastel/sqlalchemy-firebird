@@ -388,10 +388,6 @@ class StringTest(_StringTest):
 
 
 class InsertBehaviorTest(_InsertBehaviorTest):
-    @testing.skip_if(
-        lambda config: config.db.dialect.driver == "fdb",
-        "Driver fdb returns erroneous 'returns_rows = True'.",
-    )
     @testing.variation("style", ["plain", "return_defaults"])
     @testing.variation("executemany", [True, False])
     def test_no_results_for_non_returning_insert(

@@ -25,7 +25,6 @@ from sqlalchemy.testing import eq_
 from sqlalchemy.testing import expect_warnings
 from sqlalchemy.testing import fixtures
 from sqlalchemy.testing import requires
-from sqlalchemy.testing import skip_if
 
 from sqlalchemy_firebird.types import _FBInterval
 
@@ -82,10 +81,6 @@ class FunctionTypingTest(fixtures.TestBase, AssertsExecutionResults):
 class InsertTest(fixtures.TestBase, AssertsExecutionResults):
     __backend__ = True
 
-    @skip_if(
-        lambda config: config.db.dialect.driver == "fdb",
-        "Driver fdb hangs in this test.",
-    )
     def test_foreignkey_missing_insert(self, metadata, connection):
         Table(
             "t1",
@@ -124,8 +119,6 @@ class InsertTest(fixtures.TestBase, AssertsExecutionResults):
         metadata.create_all(connection)
         self._assert_data_with_sequence_returning(connection, table, "my_seq")
 
-    # This test fails on Firebird 2.5/fdb due to the wrong collation being reflected.
-    @testing.requires.firebird_3_or_higher
     def test_opt_sequence_insert(self, metadata, connection):
         table = Table(
             "testtable",
@@ -143,10 +136,6 @@ class InsertTest(fixtures.TestBase, AssertsExecutionResults):
             connection, table, pk_sequence="my_seq"
         )
 
-    @skip_if(
-        lambda config: config.db.dialect.driver == "fdb",
-        "Driver fdb hangs in this test.",
-    )
     def test_autoincrement_insert(self, metadata, connection):
         table = Table(
             "testtable",
@@ -157,10 +146,6 @@ class InsertTest(fixtures.TestBase, AssertsExecutionResults):
         metadata.create_all(connection)
         self._assert_data_autoincrement_returning(connection, table)
 
-    @skip_if(
-        lambda config: config.db.dialect.driver == "fdb",
-        "Driver fdb hangs in this test.",
-    )
     def test_noautoincrement_insert(self, metadata, connection):
         table = Table(
             "testtable",

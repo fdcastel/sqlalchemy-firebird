@@ -203,26 +203,6 @@ class TypesTest(fixtures.TestBase):
         eq_col(rt.columns["fbi"], fb_types.FBBIGINT),
 
     @testing.provide_metadata
-    @testing.requires.firebird_3_or_lower
-    def test_float_types_v3(self, connection):
-        # Firebird 2.5 and 3.0 have only two possible FLOAT data types
-        t = Table(
-            "test_float_types_v3",
-            self.metadata,
-            Column("f", sa_types.FLOAT),
-            Column("r", sa_types.REAL),
-            Column("dp", sa_types.DOUBLE_PRECISION),
-        )
-        self.metadata.create_all(testing.db)
-
-        rm = MetaData()
-        rt = Table("test_float_types_v3", rm, autoload_with=testing.db)
-
-        eq_col(rt.columns["f"], fb_types.FBFLOAT),
-        eq_col(rt.columns["r"], fb_types.FBFLOAT),
-        eq_col(rt.columns["dp"], fb_types.FBDOUBLE_PRECISION),
-
-    @testing.provide_metadata
     @testing.requires.firebird_4_or_higher
     def test_float_types(self, connection):
         t = Table(

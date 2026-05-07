@@ -270,8 +270,6 @@ class ReflectionTest(
             )
         )
 
-    # This test fails on Firebird 2.5/fdb
-    @testing.requires.firebird_3_or_higher
     def test_reflect_default_over_128_chars(self, metadata, connection):
         Table(
             "t",
@@ -416,8 +414,6 @@ class ReflectionTest(
             )
         )
 
-    # This test fails on Firebird 2.5/fdb
-    @testing.requires.firebird_3_or_higher
     def test_cross_schema_reflection_metadata_uses_schema(
         self, metadata, connection
     ):
