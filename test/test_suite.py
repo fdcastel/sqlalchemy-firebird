@@ -15,6 +15,7 @@ from sqlalchemy.testing.suite import (
     ComponentReflectionTest as _ComponentReflectionTest,
     ComponentReflectionTestExtra as _ComponentReflectionTestExtra,
     CompoundSelectTest as _CompoundSelectTest,
+    DeprecatedCompoundSelectTest as _DeprecatedCompoundSelectTest,
     IdentityColumnTest as _IdentityColumnTest,
     IdentityReflectionTest as _IdentityReflectionTest,
     StringTest as _StringTest,
@@ -46,6 +47,13 @@ class BizarroCharacterTest(_BizarroCharacterTest):
     reason="These tests fails in Firebird because a DELETE FROM <table> with self-referencing FK raises integrity errors."
 )
 class CTETest(_CTETest):
+    pass
+
+
+@pytest.mark.skip(
+    reason="Firebird requires UNION ORDER BY at the outer level; the deprecated SQLAlchemy 1.x patterns these tests exercise generate ORDER BY in non-final unions."
+)
+class DeprecatedCompoundSelectTest(_DeprecatedCompoundSelectTest):
     pass
 
 
@@ -470,7 +478,10 @@ if _TableViaSelectTest is not None:
 
 
 class WindowFunctionTest(_WindowFunctionTest):
-    # This test requires window functions not available in Firebird 3.
-    @testing.requires.firebird_4_or_higher
-    def test_window_rows_between_w_caching(self, connection):
-        super().test_window_rows_between_w_caching(connection)
+    # This test requires window functions not available in Firebird 3, and
+    # only exists in SQLAlchemy 2.1+ — the override is a no-op on 2.0.
+    if hasattr(_WindowFunctionTest, "test_window_rows_between_w_caching"):
+
+        @testing.requires.firebird_4_or_higher
+        def test_window_rows_between_w_caching(self, connection):
+            super().test_window_rows_between_w_caching(connection)
