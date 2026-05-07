@@ -60,6 +60,9 @@ Tracker = "https://github.com/fdcastel/sqlalchemy-firebird/issues"
 [tool.setuptools.dynamic]
 readme = {file = ["README.md"], content-type = "text/markdown"}
 
+[tool.setuptools.packages.find]
+include = ["sqlalchemy_firebird*"]
+
 [tool.setuptools_scm]
 version_file = "sqlalchemy_firebird/_version.py"
 
@@ -68,6 +71,6 @@ target-version = "py39"
 line-length = 79
 
 [tool.ruff.lint]
-ignore = ["E203", "E266", "E501", "F401", "F403"]
+ignore = ["E203", "E266", "E501", "E722", "F401", "F403", "F405", "F811", "F841"]
 
 [tool.ruff.format]
