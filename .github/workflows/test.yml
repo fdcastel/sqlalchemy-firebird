@@ -25,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
+        python-version: ['3.11', '3.12', '3.13']
         firebird-version: ['3.0.14', '4.0.7', '5.0.4']
     env:
       GITHUB_TOKEN: ${{ github.token }}

@@ -14,7 +14,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "sqlalchemy-firebird"
 description = "Firebird for SQLAlchemy"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 keywords = ["SQLAlchemy", "Firebird", "firebird-driver"]
 license = {file = "LICENSE"}
 authors = [
@@ -29,8 +29,6 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -67,7 +65,7 @@ include = ["sqlalchemy_firebird*"]
 version_file = "sqlalchemy_firebird/_version.py"
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py311"
 line-length = 79
 
 [tool.ruff.lint]
