@@ -129,8 +129,9 @@ class Requirements(SuiteRequirements):
         # somehow only_if([x, y]) isn't working here, negation/conjunctions
         # getting confused.
         return exclusions.only_if(
-            lambda: self.on_update_cascade.enabled
-            or self.deferrable_fks.enabled
+            lambda: (
+                self.on_update_cascade.enabled or self.deferrable_fks.enabled
+            )
         )
 
     @property
@@ -354,8 +355,8 @@ class Requirements(SuiteRequirements):
     @property
     def sane_rowcount_w_returning(self):
         return exclusions.fails_if(
-            lambda config: not (
-                config.db.dialect.supports_sane_rowcount_returning
+            lambda config: (
+                not (config.db.dialect.supports_sane_rowcount_returning)
             ),
             "driver doesn't support 'sane' rowcount when returning is on",
         )
@@ -424,9 +425,11 @@ class Requirements(SuiteRequirements):
     @property
     def insertmanyvalues(self):
         return exclusions.only_if(
-            lambda config: config.db.dialect.supports_multivalues_insert
-            and config.db.dialect.insert_returning
-            and config.db.dialect.use_insertmanyvalues,
+            lambda config: (
+                config.db.dialect.supports_multivalues_insert
+                and config.db.dialect.insert_returning
+                and config.db.dialect.use_insertmanyvalues
+            ),
             "%(database)s %(does_support)s 'insertmanyvalues functionality",
         )
 
@@ -595,8 +598,10 @@ class Requirements(SuiteRequirements):
 
         return exclusions.only_if(
             [
-                lambda config: config.db.dialect.supports_sequences
-                and config.db.dialect.sequences_optional
+                lambda config: (
+                    config.db.dialect.supports_sequences
+                    and config.db.dialect.sequences_optional
+                )
             ],
             "no sequence support, or sequences not optional",
         )

@@ -119,64 +119,74 @@ class TypesTest(fixtures.TestBase):
         rm = MetaData()
         rt = Table("test_character_types", rm, autoload_with=testing.db)
 
-        eq_col(rt.columns["c"], fb_types.FBCHAR),
-        eq_col(rt.columns["cl"], fb_types.FBCHAR, length=10),
-        eq_col(rt.columns["nc"], fb_types.FBNCHAR),
-        eq_col(rt.columns["ncl"], fb_types.FBNCHAR, length=11),
-        eq_col(rt.columns["vc"], fb_types.FBTEXT),
-        eq_col(rt.columns["vcl"], fb_types.FBVARCHAR, length=12),
-        eq_col(
-            rt.columns["nvc"],
-            fb_types.FBTEXT,
-            charset=fb_types.NATIONAL_CHARSET,
-        ),
-        eq_col(rt.columns["nvcl"], fb_types.FBNVARCHAR, length=13),
-        eq_col(rt.columns["fc"], fb_types.FBCHAR),
-        eq_col(rt.columns["fcl"], fb_types.FBCHAR, length=20),
-        eq_col(
-            rt.columns["fclc"],
-            fb_types.FBCHAR,
-            length=21,
-            charset=TEST_CHARSET,
-        ),
-        eq_col(
-            rt.columns["fclcc"],
-            fb_types.FBCHAR,
-            length=22,
-            charset=TEST_CHARSET,
-            collation=TEST_COLLATION,
-        ),
-        eq_col(rt.columns["fb"], fb_types.FBBINARY),
-        eq_col(rt.columns["fbl"], fb_types.FBBINARY, length=31),
-        eq_col(rt.columns["fnc"], fb_types.FBNCHAR),
-        eq_col(rt.columns["fncl"], fb_types.FBNCHAR, length=32),
+        (eq_col(rt.columns["c"], fb_types.FBCHAR),)
+        (eq_col(rt.columns["cl"], fb_types.FBCHAR, length=10),)
+        (eq_col(rt.columns["nc"], fb_types.FBNCHAR),)
+        (eq_col(rt.columns["ncl"], fb_types.FBNCHAR, length=11),)
+        (eq_col(rt.columns["vc"], fb_types.FBTEXT),)
+        (eq_col(rt.columns["vcl"], fb_types.FBVARCHAR, length=12),)
+        (
+            eq_col(
+                rt.columns["nvc"],
+                fb_types.FBTEXT,
+                charset=fb_types.NATIONAL_CHARSET,
+            ),
+        )
+        (eq_col(rt.columns["nvcl"], fb_types.FBNVARCHAR, length=13),)
+        (eq_col(rt.columns["fc"], fb_types.FBCHAR),)
+        (eq_col(rt.columns["fcl"], fb_types.FBCHAR, length=20),)
+        (
+            eq_col(
+                rt.columns["fclc"],
+                fb_types.FBCHAR,
+                length=21,
+                charset=TEST_CHARSET,
+            ),
+        )
+        (
+            eq_col(
+                rt.columns["fclcc"],
+                fb_types.FBCHAR,
+                length=22,
+                charset=TEST_CHARSET,
+                collation=TEST_COLLATION,
+            ),
+        )
+        (eq_col(rt.columns["fb"], fb_types.FBBINARY),)
+        (eq_col(rt.columns["fbl"], fb_types.FBBINARY, length=31),)
+        (eq_col(rt.columns["fnc"], fb_types.FBNCHAR),)
+        (eq_col(rt.columns["fncl"], fb_types.FBNCHAR, length=32),)
         eq_col(rt.columns["fvc"], fb_types.FBTEXT, charset=TEST_CHARSET)
-        eq_col(rt.columns["fvcl"], fb_types.FBVARCHAR, length=33),
-        eq_col(
-            rt.columns["fvclc"],
-            fb_types.FBVARCHAR,
-            length=34,
-            charset=TEST_CHARSET,
-        ),
-        eq_col(
-            rt.columns["fvclcc"],
-            fb_types.FBVARCHAR,
-            length=35,
-            charset=TEST_CHARSET,
-            collation=TEST_COLLATION,
-        ),
+        (eq_col(rt.columns["fvcl"], fb_types.FBVARCHAR, length=33),)
+        (
+            eq_col(
+                rt.columns["fvclc"],
+                fb_types.FBVARCHAR,
+                length=34,
+                charset=TEST_CHARSET,
+            ),
+        )
+        (
+            eq_col(
+                rt.columns["fvclcc"],
+                fb_types.FBVARCHAR,
+                length=35,
+                charset=TEST_CHARSET,
+                collation=TEST_COLLATION,
+            ),
+        )
         eq_col(
             rt.columns["fvb"],
             fb_types.FBTEXT,
             charset=fb_types.BINARY_CHARSET,
         )
-        eq_col(rt.columns["fvbl"], fb_types.FBVARBINARY, length=36),
+        (eq_col(rt.columns["fvbl"], fb_types.FBVARBINARY, length=36),)
         eq_col(
             rt.columns["fnvc"],
             fb_types.FBTEXT,
             charset=fb_types.NATIONAL_CHARSET,
         )
-        eq_col(rt.columns["fnvcl"], fb_types.FBNVARCHAR, length=37),
+        (eq_col(rt.columns["fnvcl"], fb_types.FBNVARCHAR, length=37),)
 
     @testing.provide_metadata
     def test_integer_types(self, connection):
@@ -195,12 +205,12 @@ class TypesTest(fixtures.TestBase):
         rm = MetaData()
         rt = Table("test_integer_types", rm, autoload_with=testing.db)
 
-        eq_col(rt.columns["si"], fb_types.FBSMALLINT),
-        eq_col(rt.columns["i"], fb_types.FBINTEGER),
-        eq_col(rt.columns["bi"], fb_types.FBBIGINT),
-        eq_col(rt.columns["fsi"], fb_types.FBSMALLINT),
-        eq_col(rt.columns["fi"], fb_types.FBINTEGER),
-        eq_col(rt.columns["fbi"], fb_types.FBBIGINT),
+        (eq_col(rt.columns["si"], fb_types.FBSMALLINT),)
+        (eq_col(rt.columns["i"], fb_types.FBINTEGER),)
+        (eq_col(rt.columns["bi"], fb_types.FBBIGINT),)
+        (eq_col(rt.columns["fsi"], fb_types.FBSMALLINT),)
+        (eq_col(rt.columns["fi"], fb_types.FBINTEGER),)
+        (eq_col(rt.columns["fbi"], fb_types.FBBIGINT),)
 
     @testing.provide_metadata
     @testing.requires.firebird_4_or_higher
@@ -227,19 +237,19 @@ class TypesTest(fixtures.TestBase):
         rm = MetaData()
         rt = Table("test_float_types", rm, autoload_with=testing.db)
 
-        eq_col(rt.columns["f"], fb_types.FBFLOAT),
-        eq_col(rt.columns["f24"], fb_types.FBFLOAT),
-        eq_col(rt.columns["f53"], fb_types.FBDOUBLE_PRECISION),
-        eq_col(rt.columns["r"], fb_types.FBFLOAT),
-        eq_col(rt.columns["dp"], fb_types.FBDOUBLE_PRECISION),
-        eq_col(rt.columns["ff"], fb_types.FBFLOAT),
-        eq_col(rt.columns["ff24"], fb_types.FBFLOAT),
-        eq_col(rt.columns["ff53"], fb_types.FBDOUBLE_PRECISION),
-        eq_col(rt.columns["fr"], fb_types.FBFLOAT),
-        eq_col(rt.columns["fdp"], fb_types.FBDOUBLE_PRECISION),
-        eq_col(rt.columns["fdf"], fb_types.FBDECFLOAT, precision=34),
-        eq_col(rt.columns["fdf16"], fb_types.FBDECFLOAT, precision=16),
-        eq_col(rt.columns["fdf34"], fb_types.FBDECFLOAT, precision=34),
+        (eq_col(rt.columns["f"], fb_types.FBFLOAT),)
+        (eq_col(rt.columns["f24"], fb_types.FBFLOAT),)
+        (eq_col(rt.columns["f53"], fb_types.FBDOUBLE_PRECISION),)
+        (eq_col(rt.columns["r"], fb_types.FBFLOAT),)
+        (eq_col(rt.columns["dp"], fb_types.FBDOUBLE_PRECISION),)
+        (eq_col(rt.columns["ff"], fb_types.FBFLOAT),)
+        (eq_col(rt.columns["ff24"], fb_types.FBFLOAT),)
+        (eq_col(rt.columns["ff53"], fb_types.FBDOUBLE_PRECISION),)
+        (eq_col(rt.columns["fr"], fb_types.FBFLOAT),)
+        (eq_col(rt.columns["fdp"], fb_types.FBDOUBLE_PRECISION),)
+        (eq_col(rt.columns["fdf"], fb_types.FBDECFLOAT, precision=34),)
+        (eq_col(rt.columns["fdf16"], fb_types.FBDECFLOAT, precision=16),)
+        (eq_col(rt.columns["fdf34"], fb_types.FBDECFLOAT, precision=34),)
 
     @testing.provide_metadata
     def test_fixed_types(self, connection):
@@ -264,18 +274,26 @@ class TypesTest(fixtures.TestBase):
         rm = MetaData()
         rt = Table("test_fixed_types", rm, autoload_with=testing.db)
 
-        eq_col(rt.columns["n4"], fb_types.FBNUMERIC, precision=4, scale=2),
-        eq_col(rt.columns["d4"], fb_types.FBDECIMAL, precision=4, scale=2),
-        eq_col(rt.columns["n9"], fb_types.FBNUMERIC, precision=9, scale=3),
-        eq_col(rt.columns["d9"], fb_types.FBDECIMAL, precision=9, scale=3),
-        eq_col(rt.columns["n18"], fb_types.FBNUMERIC, precision=18, scale=4),
-        eq_col(rt.columns["d18"], fb_types.FBDECIMAL, precision=18, scale=4),
-        eq_col(rt.columns["fn4"], fb_types.FBNUMERIC, precision=4, scale=2),
-        eq_col(rt.columns["fd4"], fb_types.FBDECIMAL, precision=4, scale=2),
-        eq_col(rt.columns["fn9"], fb_types.FBNUMERIC, precision=9, scale=3),
-        eq_col(rt.columns["fd9"], fb_types.FBDECIMAL, precision=9, scale=3),
-        eq_col(rt.columns["fn18"], fb_types.FBNUMERIC, precision=18, scale=4),
-        eq_col(rt.columns["fd18"], fb_types.FBDECIMAL, precision=18, scale=4),
+        (eq_col(rt.columns["n4"], fb_types.FBNUMERIC, precision=4, scale=2),)
+        (eq_col(rt.columns["d4"], fb_types.FBDECIMAL, precision=4, scale=2),)
+        (eq_col(rt.columns["n9"], fb_types.FBNUMERIC, precision=9, scale=3),)
+        (eq_col(rt.columns["d9"], fb_types.FBDECIMAL, precision=9, scale=3),)
+        (eq_col(rt.columns["n18"], fb_types.FBNUMERIC, precision=18, scale=4),)
+        (eq_col(rt.columns["d18"], fb_types.FBDECIMAL, precision=18, scale=4),)
+        (eq_col(rt.columns["fn4"], fb_types.FBNUMERIC, precision=4, scale=2),)
+        (eq_col(rt.columns["fd4"], fb_types.FBDECIMAL, precision=4, scale=2),)
+        (eq_col(rt.columns["fn9"], fb_types.FBNUMERIC, precision=9, scale=3),)
+        (eq_col(rt.columns["fd9"], fb_types.FBDECIMAL, precision=9, scale=3),)
+        (
+            eq_col(
+                rt.columns["fn18"], fb_types.FBNUMERIC, precision=18, scale=4
+            ),
+        )
+        (
+            eq_col(
+                rt.columns["fd18"], fb_types.FBDECIMAL, precision=18, scale=4
+            ),
+        )
 
     @testing.provide_metadata
     @testing.requires.firebird_4_or_higher
@@ -294,8 +312,16 @@ class TypesTest(fixtures.TestBase):
         rm = MetaData()
         rt = Table("test_fb4_types", rm, autoload_with=testing.db)
 
-        eq_col(rt.columns["n38"], fb_types.FBNUMERIC, precision=38, scale=8),
-        eq_col(rt.columns["d38"], fb_types.FBDECIMAL, precision=38, scale=8),
-        eq_col(rt.columns["fli"], fb_types.FBINT128),
-        eq_col(rt.columns["fn38"], fb_types.FBNUMERIC, precision=38, scale=8),
-        eq_col(rt.columns["fd38"], fb_types.FBDECIMAL, precision=38, scale=8),
+        (eq_col(rt.columns["n38"], fb_types.FBNUMERIC, precision=38, scale=8),)
+        (eq_col(rt.columns["d38"], fb_types.FBDECIMAL, precision=38, scale=8),)
+        (eq_col(rt.columns["fli"], fb_types.FBINT128),)
+        (
+            eq_col(
+                rt.columns["fn38"], fb_types.FBNUMERIC, precision=38, scale=8
+            ),
+        )
+        (
+            eq_col(
+                rt.columns["fd38"], fb_types.FBDECIMAL, precision=38, scale=8
+            ),
+        )

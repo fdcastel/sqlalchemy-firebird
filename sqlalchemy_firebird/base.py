@@ -354,9 +354,7 @@ class FBDDLCompiler(sql.compiler.DDLCompiler):
         )
 
         kind = (
-            "ALWAYS"
-            if identity.always and (not firebird_3)
-            else "BY DEFAULT"
+            "ALWAYS" if identity.always and (not firebird_3) else "BY DEFAULT"
         )
         text = "GENERATED %s AS IDENTITY" % kind
 
@@ -377,9 +375,9 @@ class FBTypeCompiler(compiler.GenericTypeCompiler):
     def _render_firebird_string_type(
         self,
         name: str,
-        length: Optional[int]=None,
-        collation: Optional[str]=None,
-        charset: Optional[str]=None,
+        length: Optional[int] = None,
+        collation: Optional[str] = None,
+        charset: Optional[str] = None,
     ) -> str:
         firebird_3 = (
             self.dialect.server_version_info
@@ -437,7 +435,9 @@ class FBTypeCompiler(compiler.GenericTypeCompiler):
         )
 
     def visit_NCHAR(self, type_: fb_types.FBNCHAR, **kw: Any) -> str:
-        return self._render_firebird_string_type("NCHAR", type_.length, type_.collation)
+        return self._render_firebird_string_type(
+            "NCHAR", type_.length, type_.collation
+        )
 
     def visit_VARCHAR(self, type_: fb_types.FBVARCHAR, **kw: Any) -> str:
         return self._render_firebird_string_type(
@@ -446,9 +446,11 @@ class FBTypeCompiler(compiler.GenericTypeCompiler):
             type_.collation,
             getattr(type_, "charset", None),
         )
-    
+
     def visit_NVARCHAR(self, type_: fb_types.FBNCHAR, **kw: Any) -> str:
-        return self._render_firebird_string_type("NVARCHAR", type_.length, type_.collation)
+        return self._render_firebird_string_type(
+            "NVARCHAR", type_.length, type_.collation
+        )
 
     def visit_BINARY(self, type_: fb_types.FBBINARY, **kw) -> str:
         return self._render_firebird_string_type("BINARY", type_.length)
@@ -860,7 +862,11 @@ class FBDialect(default.DefaultDialect):
                     charset=row.character_set_name,
                     collation=row.collation_name,
                 )
-            elif colclass in (fb_types.FBFLOAT, fb_types.FBDOUBLE_PRECISION, fb_types.FBDECFLOAT):
+            elif colclass in (
+                fb_types.FBFLOAT,
+                fb_types.FBDOUBLE_PRECISION,
+                fb_types.FBDECFLOAT,
+            ):
                 # FLOAT, DOUBLE PRECISION or DECFLOAT
                 coltype = colclass(row.field_precision)
             elif issubclass(colclass, fb_types._FBInteger):
@@ -883,7 +889,11 @@ class FBDialect(default.DefaultDialect):
                 coltype = colclass(timezone=has_timezone)
             elif issubclass(colclass, fb_types.FBBLOB):
                 if row.field_sub_type == 1:
-                    coltype = fb_types.FBTEXT(row.segment_length, row.character_set_name, row.collation_name)
+                    coltype = fb_types.FBTEXT(
+                        row.segment_length,
+                        row.character_set_name,
+                        row.collation_name,
+                    )
                 else:
                     coltype = fb_types.FBBLOB(row.segment_length)
             else:
@@ -1262,11 +1272,15 @@ class FBDialect(default.DefaultDialect):
         if isinstance(e, (self.dbapi.DatabaseError)):
             sqlcode = e.sqlcode
             gdscode = e.gds_codes[0]
-            return sqlcode == -902 and gdscode in (
-                335544726,  # net_read_err     Error reading data from the connection
-                335544727,  # net_write_err    Error writing data to the connection
-                335544721,  # network_error    Unable to complete network request to host "@1"
-                335544856,  # att_shutdown     Connection shutdown
+            return (
+                sqlcode == -902
+                and gdscode
+                in (
+                    335544726,  # net_read_err     Error reading data from the connection
+                    335544727,  # net_write_err    Error writing data to the connection
+                    335544721,  # network_error    Unable to complete network request to host "@1"
+                    335544856,  # att_shutdown     Connection shutdown
+                )
             )
 
         return False

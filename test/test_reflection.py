@@ -86,8 +86,7 @@ class DomainReflectionTest(fixtures.TestBase, AssertsExecutionResults):
                     if "already exists" not in str(e):
                         raise e
             con.exec_driver_sql(
-                "CREATE TABLE testtable (question integer, answer "
-                "testdomain)"
+                "CREATE TABLE testtable (question integer, answer testdomain)"
             )
             con.exec_driver_sql(
                 "CREATE TABLE testtable2(question "
@@ -154,9 +153,9 @@ class DomainReflectionTest(fixtures.TestBase, AssertsExecutionResults):
             "42",
             "Reflected default value didn't equal expected value",
         )
-        assert (
-            not table1.columns.answer.nullable
-        ), "Expected reflected column to not be nullable."
+        assert not table1.columns.answer.nullable, (
+            "Expected reflected column to not be nullable."
+        )
 
         table2 = Table(
             "testtable2",
@@ -168,9 +167,9 @@ class DomainReflectionTest(fixtures.TestBase, AssertsExecutionResults):
             "0",
             "Reflected default value didn't equal expected value",
         )
-        assert (
-            table2.columns.answer.nullable
-        ), "Expected reflected column to be nullable."
+        assert table2.columns.answer.nullable, (
+            "Expected reflected column to be nullable."
+        )
 
     def test_quoted_domain_is_reflected(self, connection):
         metadata = MetaData()
@@ -588,7 +587,7 @@ class ReflectionTest(
 
         self.assert_compile(
             CreateIndex(idx),
-            "CREATE INDEX idx1 ON table1 (id) " "WHERE name = 'test'",
+            "CREATE INDEX idx1 ON table1 (id) WHERE name = 'test'",
         )
 
     def test_foreign_key_option_inspection(self, metadata, connection):

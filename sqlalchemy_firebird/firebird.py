@@ -6,7 +6,7 @@
     :url: https://pypi.org/project/firebird-driver/
     :documentation: https://firebird-driver.readthedocs.io/en/latest/
 
-    The firebird-driver package provides driver for Python 3.8+ and Firebird 3+. 
+    The firebird-driver package provides driver for Python 3.8+ and Firebird 3+.
     This driver uses new Firebird OO API provided by fbclient library.
 """  # noqa
 

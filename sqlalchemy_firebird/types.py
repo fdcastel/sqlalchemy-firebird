@@ -19,10 +19,10 @@ class _FBString(sqltypes.String):
         self.charset = charset
         # Only pass parameters that the parent String class accepts
         string_kwargs = {}
-        if 'length' in kw:
-            string_kwargs['length'] = kw['length']
-        if 'collation' in kw:
-            string_kwargs['collation'] = kw['collation']
+        if "length" in kw:
+            string_kwargs["length"] = kw["length"]
+        if "collation" in kw:
+            string_kwargs["collation"] = kw["collation"]
         super().__init__(**string_kwargs)
 
 
@@ -82,10 +82,10 @@ class FBFLOAT(sqltypes.FLOAT):
 
     def __init__(self, precision=None, **kwargs):
         # FLOAT doesn't accept 'scale' parameter, filter it out
-        float_kwargs = {k: v for k, v in kwargs.items() if k != 'scale'}
+        float_kwargs = {k: v for k, v in kwargs.items() if k != "scale"}
         # Set precision if provided
         if precision is not None:
-            float_kwargs['precision'] = precision
+            float_kwargs["precision"] = precision
         # Provide defaults for required parameters
         float_kwargs.setdefault("precision", None)
         float_kwargs.setdefault("decimal_return_scale", None)
@@ -102,10 +102,10 @@ class FBDOUBLE_PRECISION(sqltypes.DOUBLE_PRECISION):
 
     def __init__(self, precision=None, **kwargs):
         # DOUBLE_PRECISION doesn't accept 'scale' parameter, filter it out
-        float_kwargs = {k: v for k, v in kwargs.items() if k != 'scale'}
+        float_kwargs = {k: v for k, v in kwargs.items() if k != "scale"}
         # Set precision if provided
         if precision is not None:
-            float_kwargs['precision'] = precision
+            float_kwargs["precision"] = precision
         # Provide defaults for required parameters
         float_kwargs.setdefault("precision", None)
         float_kwargs.setdefault("decimal_return_scale", None)
@@ -123,7 +123,7 @@ class FBDECFLOAT(sqltypes.Numeric):
     def __init__(self, precision=None, **kwargs):
         # DECFLOAT (Numeric) accepts all parameters
         if precision is not None:
-            kwargs['precision'] = precision
+            kwargs["precision"] = precision
         kwargs.setdefault("precision", None)
         kwargs.setdefault("scale", None)
         kwargs.setdefault("decimal_return_scale", None)

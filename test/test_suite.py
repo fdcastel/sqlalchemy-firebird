@@ -23,16 +23,17 @@ from sqlalchemy.testing.suite import (
     SimpleUpdateDeleteTest as _SimpleUpdateDeleteTest,
     TableViaSelectTest as _TableViaSelectTest,
     TempTableElementsTest as _TempTableElementsTest,
-    WindowFunctionTest as _WindowFunctionTest
+    WindowFunctionTest as _WindowFunctionTest,
 )
 
 
 @pytest.mark.skipif(
     config.db.dialect.server_version_info < (4,),
-    reason="These tests rely on correct identity semantics, which were only fixed starting from Firebird 4.0."
+    reason="These tests rely on correct identity semantics, which were only fixed starting from Firebird 4.0.",
 )
 class BizarroCharacterTest(_BizarroCharacterTest):
     pass
+
 
 @pytest.mark.skip(
     reason="These tests fails in Firebird because a DELETE FROM <table> with self-referencing FK raises integrity errors."
@@ -433,7 +434,8 @@ class SimpleUpdateDeleteTest(_SimpleUpdateDeleteTest):
     def test_delete_returning(self, connection, criteria):
         super().test_delete_returning(connection, criteria)
 
-class TempTableElementsTest(_TempTableElementsTest):    
+
+class TempTableElementsTest(_TempTableElementsTest):
     @testing.requires.identity_columns
     def test_reflect_identity(self, tablename, connection, metadata):
         Table(
