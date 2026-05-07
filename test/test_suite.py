@@ -21,10 +21,17 @@ from sqlalchemy.testing.suite import (
     InsertBehaviorTest as _InsertBehaviorTest,
     RowCountTest as _RowCountTest,
     SimpleUpdateDeleteTest as _SimpleUpdateDeleteTest,
-    TableViaSelectTest as _TableViaSelectTest,
     TempTableElementsTest as _TempTableElementsTest,
     WindowFunctionTest as _WindowFunctionTest,
 )
+
+# TableViaSelectTest only exists in SQLAlchemy 2.1+; skip-shim it for 2.0.
+try:
+    from sqlalchemy.testing.suite import (
+        TableViaSelectTest as _TableViaSelectTest,
+    )
+except ImportError:
+    _TableViaSelectTest = None
 
 
 @pytest.mark.skipif(
@@ -453,11 +460,13 @@ class TempTableElementsTest(_TempTableElementsTest):
         eq_(insp.get_columns(tablename)[0]["identity"]["start"], expected)
 
 
-@pytest.mark.skip(
-    reason="Firebird does not support CREATE TABLE AS SELECT, and requires a COMMIT between DDL and DML referencing the new object in the same transaction."
-)
-class TableViaSelectTest(_TableViaSelectTest):
-    pass
+if _TableViaSelectTest is not None:
+
+    @pytest.mark.skip(
+        reason="Firebird does not support CREATE TABLE AS SELECT, and requires a COMMIT between DDL and DML referencing the new object in the same transaction."
+    )
+    class TableViaSelectTest(_TableViaSelectTest):
+        pass
 
 
 class WindowFunctionTest(_WindowFunctionTest):
