@@ -35,6 +35,9 @@ jobs:
         with:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
+          # Distinct suffix per matrix cell so the three Firebird versions
+          # sharing a Python don't race on the same cache key.
+          cache-suffix: ${{ matrix.firebird-version }}
       - name: uv sync
         run: uv sync
       - name: Install PSFirebird
