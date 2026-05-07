@@ -1,0 +1,59 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - name: uv sync
+        run: uv sync
+      - name: ruff check
+        run: uv run ruff check
+      - name: ruff format --check
+        run: uv run ruff format --check
+
+  test:
+    needs: lint
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
+        firebird-version: ['3.0.14', '4.0.7', '5.0.4']
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+      - name: uv sync
+        run: uv sync
+      - name: Install PSFirebird
+        shell: pwsh
+        run: |
+          Install-Module PSFirebird -Scope CurrentUser -Force
+      - name: Provision Firebird ${{ matrix.firebird-version }}
+        shell: pwsh
+        run: |
+          Import-Module PSFirebird
+          $envPath = Join-Path $env:RUNNER_TEMP "fb-${{ matrix.firebird-version }}"
+          $envObj = New-FirebirdEnvironment -Version "${{ matrix.firebird-version }}" -Path $envPath -Force
+          $dbPath = Join-Path $envPath 'sqlalchemy-firebird-tests.fdb'
+          $db = New-FirebirdDatabase -Database $dbPath -Environment $envObj -Force
+          $clientLibrary = $envObj.GetClientLibraryPath()
+          $dbUri = "firebird+firebird://sysdba@/$($db.Path -replace '\\','/')?charset=UTF8&fb_client_library=$($clientLibrary -replace '\\','/')"
+          "FIREBIRD_DBURI=$dbUri" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Configured FIREBIRD_DBURI=$dbUri"
+      - name: pytest
+        shell: pwsh
+        run: |
+          uv run pytest --dburi $env:FIREBIRD_DBURI

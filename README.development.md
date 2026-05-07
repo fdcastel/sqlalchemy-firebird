@@ -118,3 +118,30 @@ pip install -e $path_to_your_sqlalchemy_local_folder
 ```
 
 The `launch.json` file already has the required `"justMyCode": false` configuration which allows you to step into SQLAlchemy source files during debugging.
+
+
+# Releasing
+
+Releases are produced by `.github/workflows/release.yml`, which fires on any `v*` tag pushed to GitHub. The package version is derived from the tag via `setuptools-scm` — there is no `__version__` to bump by hand.
+
+All release tags **must follow [PEP 440](https://peps.python.org/pep-0440/)** prefixed with `v`. This is the only supported format:
+
+| Kind | Example tag | Resulting version | GitHub Release marked as |
+|---|---|---|---|
+| Final | `v2.2.0` | `2.2.0` | stable |
+| Alpha | `v2.2.0a1` | `2.2.0a1` | pre-release |
+| Beta | `v2.2.0b1` | `2.2.0b1` | pre-release |
+| Release candidate | `v2.2.0rc1` | `2.2.0rc1` | pre-release |
+| Dev | `v2.2.0.dev1` | `2.2.0.dev1` | pre-release |
+| Post-release | `v2.2.0.post1` | `2.2.0.post1` | stable |
+
+**Hyphenated SemVer-style tags like `v2.2.0-beta1` are not supported** and will be rejected by the release workflow at the validation step. They are not valid PEP 440 segments and would produce a wheel filename that differs from the tag. Use `v2.2.0b1` for a beta.
+
+Cutting a release:
+
+```bash
+git tag v2.2.0
+git push origin v2.2.0
+```
+
+The workflow will validate the tag, build the sdist + wheel with `uv build`, detect whether the tag is a pre-release, and publish a GitHub Release with both artifacts attached.
