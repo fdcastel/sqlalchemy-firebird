@@ -1,14 +1,6 @@
 # Development notes
 
-Support for 32/64 bit Python 2.7, 3.6+ on Windows/Linux/Mac.
-
-* Use `firebird-driver` and/or `fdb`
-    * Python >= 3.8
-    * SQLAlchemy 1.4 or 2.0
-
-* Use `fdb`
-    * Python == 3.7 and SQLAlchemy 2.0
-    * Python >= 3.6 and SQLAlchemy 1.4
+Targets Python 3.9+ on Windows/Linux/Mac with `firebird-driver` and SQLAlchemy 2.0+, against Firebird 3.0 or newer.
 
 
 # Windows environment
@@ -39,7 +31,6 @@ Clone this repository into a local folder on your computer and, from the root fo
 python -m venv .venv
 .venv/Scripts/activate
 pip install .[dev]
-pip install fdb
 ```
 
 This will create a Python virtual environment in `.venv` subfolder and install all required components.
@@ -63,7 +54,6 @@ Clone this repository into a local folder on your computer and, from the root fo
 python3 -m venv .venv
 . .venv/bin/activate
 pip install .[dev]
-pip install fdb
 ```
 
 This will create a Python virtual environment in `.venv` subfolder and install all required components.
