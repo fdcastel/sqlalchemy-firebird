@@ -3,7 +3,7 @@ pushd "%~dp0"
 
 if exist dist\ (del /q dist\*.*)
 
-python -m build
+uv build
 
 if errorlevel 1 (
   echo.

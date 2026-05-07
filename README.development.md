@@ -25,15 +25,19 @@ choco install vscode -y
 
 ## Initial checkout
 
-Clone this repository into a local folder on your computer and, from the root folder, run 
+This project uses [`uv`](https://docs.astral.sh/uv/) for environment and dependency management. Install it with:
 
 ```powershell
-python -m venv .venv
-.venv/Scripts/activate
-pip install .[dev]
+winget install --id=astral-sh.uv -e
 ```
 
-This will create a Python virtual environment in `.venv` subfolder and install all required components.
+Clone this repository into a local folder on your computer and, from the root folder, run
+
+```powershell
+uv sync
+```
+
+`uv sync` automatically creates `.venv`, installs the project, and installs the `dev` dependency group (pytest, ruff) from `uv.lock`.
 
 Open the project folder with VSCode. It should detect the virtual environment automatically and activate it. Please refer to [Visual Studio Code documentation on Python](https://code.visualstudio.com/docs/languages/python) for more information.
 
@@ -48,15 +52,13 @@ To activate the virtual environment on a command prompt instance (cmd or powersh
 
 ## Initial checkout
 
-Clone this repository into a local folder on your computer and, from the root folder, run 
+Install [`uv`](https://docs.astral.sh/uv/getting-started/installation/), clone this repository into a local folder, and from the root folder run:
 
 ```bash
-python3 -m venv .venv
-. .venv/bin/activate
-pip install .[dev]
+uv sync
 ```
 
-This will create a Python virtual environment in `.venv` subfolder and install all required components.
+`uv sync` automatically creates `.venv`, installs the project, and installs the `dev` dependency group (pytest, ruff) from `uv.lock`.
 
 To activate the virtual environment use:
 
