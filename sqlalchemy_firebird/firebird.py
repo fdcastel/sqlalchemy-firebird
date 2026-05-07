@@ -10,6 +10,8 @@
     This driver uses new Firebird OO API provided by fbclient library.
 """  # noqa
 
+import sys
+
 from datetime import datetime
 from datetime import time
 from math import modf
@@ -140,7 +142,28 @@ class FBDialect_firebird(FBDialect):
         # Firebird-driver needs special time zone handling.
         #   https://github.com/FirebirdSQL/python3-driver/issues/19#issuecomment-1523045743
         adapted_parameters = [self.adapt_timezone(p) for p in parameters]
+        self._disable_blob_streaming(cursor)
         super().do_execute(cursor, statement, adapted_parameters, context)
+
+    def do_executemany(self, cursor, statement, parameters, context=None):
+        self._disable_blob_streaming(cursor)
+        super().do_executemany(cursor, statement, parameters, context)
+
+    def do_execute_no_params(self, cursor, statement, context=None):
+        self._disable_blob_streaming(cursor)
+        super().do_execute_no_params(cursor, statement, context)
+
+    @staticmethod
+    def _disable_blob_streaming(cursor):
+        # SQLAlchemy fully consumes a cursor and then closes it before its
+        # result processors run. firebird-driver closes any BlobReader
+        # objects together with the cursor, which would make BLOB columns
+        # unreadable from within SQLAlchemy result rows (issue #58). Force
+        # all BLOBs to be returned as fully materialized bytes/str by
+        # raising the per-cursor streaming threshold past any practical
+        # size; this leaves driver_config.stream_blob_threshold untouched.
+        if hasattr(cursor, "stream_blob_threshold"):
+            cursor.stream_blob_threshold = sys.maxsize
 
 
 def remove_keys(d, keys):
