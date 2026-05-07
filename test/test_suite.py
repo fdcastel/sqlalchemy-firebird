@@ -478,8 +478,13 @@ if _TableViaSelectTest is not None:
 
 
 class WindowFunctionTest(_WindowFunctionTest):
-    # This test requires window functions not available in Firebird 3, and
-    # only exists in SQLAlchemy 2.1+ — the override is a no-op on 2.0.
+    # ROWS BETWEEN window framing is unsupported on Firebird 3.
+
+    @testing.requires.firebird_4_or_higher
+    def test_window_rows_between(self, connection):
+        super().test_window_rows_between(connection)
+
+    # test_window_rows_between_w_caching only exists in SQLAlchemy 2.1+.
     if hasattr(_WindowFunctionTest, "test_window_rows_between_w_caching"):
 
         @testing.requires.firebird_4_or_higher
