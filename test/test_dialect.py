@@ -282,8 +282,8 @@ class CreateConnectArgsTest(fixtures.TestBase):
             make_url("firebird+firebird://u:p@myhost:3051/db_b")
         )
 
-        srv_a = driver_config.get_server("myhost:3050")
-        srv_b = driver_config.get_server("myhost:3051")
+        srv_a = driver_config.get_server("myhost/3050")
+        srv_b = driver_config.get_server("myhost/3051")
         assert srv_a is not None and srv_b is not None
         assert srv_a is not srv_b
         eq_(srv_a.host.value, "myhost")
@@ -293,13 +293,68 @@ class CreateConnectArgsTest(fixtures.TestBase):
 
         db_a = driver_config.get_database("db_a")
         db_b = driver_config.get_database("db_b")
-        eq_(db_a.server.value, "myhost:3050")
-        eq_(db_b.server.value, "myhost:3051")
+        eq_(db_a.server.value, "myhost/3050")
+        eq_(db_b.server.value, "myhost/3051")
 
     def test_default_port_when_omitted(self):
         FBDialect_firebird().create_connect_args(
             make_url("firebird+firebird://u:p@otherhost/db_c")
         )
-        srv = driver_config.get_server("otherhost:3050")
+        srv = driver_config.get_server("otherhost/3050")
         assert srv is not None
         eq_(srv.port.value, "3050")
+
+    def test_ipv6_literal_host_distinct_ports(self):
+        # IPv6 literal hosts on the same address but different ports must
+        # produce distinct registrations. The "/" separator keeps the key
+        # unambiguous without bracket-wrapping the embedded colons
+        # (issue #69 review comment).
+        dialect = FBDialect_firebird()
+
+        dialect.create_connect_args(
+            make_url("firebird+firebird://u:p@[::1]:3050/db_v6a")
+        )
+        dialect.create_connect_args(
+            make_url("firebird+firebird://u:p@[::1]:3051/db_v6b")
+        )
+
+        srv_a = driver_config.get_server("::1/3050")
+        srv_b = driver_config.get_server("::1/3051")
+        assert srv_a is not None and srv_b is not None
+        assert srv_a is not srv_b
+        eq_(srv_a.host.value, "::1")
+        eq_(srv_b.host.value, "::1")
+        eq_(srv_a.port.value, "3050")
+        eq_(srv_b.port.value, "3051")
+
+        db_a = driver_config.get_database("db_v6a")
+        db_b = driver_config.get_database("db_v6b")
+        eq_(db_a.server.value, "::1/3050")
+        eq_(db_b.server.value, "::1/3051")
+
+    def test_ipv6_literal_host_default_port(self):
+        FBDialect_firebird().create_connect_args(
+            make_url("firebird+firebird://u:p@[2001:db8::1]/db_v6c")
+        )
+        srv = driver_config.get_server("2001:db8::1/3050")
+        assert srv is not None
+        eq_(srv.host.value, "2001:db8::1")
+        eq_(srv.port.value, "3050")
+
+    def test_distinct_hosts_distinct_servers(self):
+        # Different hosts (same port) must not collide on the registry key.
+        dialect = FBDialect_firebird()
+
+        dialect.create_connect_args(
+            make_url("firebird+firebird://u:p@host_one:3050/db_h1")
+        )
+        dialect.create_connect_args(
+            make_url("firebird+firebird://u:p@host_two:3050/db_h2")
+        )
+
+        srv_1 = driver_config.get_server("host_one/3050")
+        srv_2 = driver_config.get_server("host_two/3050")
+        assert srv_1 is not None and srv_2 is not None
+        assert srv_1 is not srv_2
+        eq_(srv_1.host.value, "host_one")
+        eq_(srv_2.host.value, "host_two")

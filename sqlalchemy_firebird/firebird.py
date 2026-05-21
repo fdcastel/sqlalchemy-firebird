@@ -85,14 +85,12 @@ class FBDialect_firebird(FBDialect):
                 port_number = str(opts["port"])
                 del opts["port"]
 
-            # Key the driver_config server registration by "host:port" so
+            # Key the driver_config server registration by "host/port" so
             # multiple Firebird servers on the same host (different ports)
-            # get distinct entries (issue #69). IPv6 literals are wrapped
-            # in [] to disambiguate their embedded colons.
-            if ":" in host_name:
-                server_name = f"[{host_name}]:{port_number}"
-            else:
-                server_name = f"{host_name}:{port_number}"
+            # get distinct entries (issue #69). The "/" separator matches
+            # Firebird's host/port syntax and never collides with the colons
+            # in IPv6 literals, so no special-casing is required.
+            server_name = f"{host_name}/{port_number}"
 
             cfg_driver_server = driver_config.get_server(server_name)
             if cfg_driver_server is None:
