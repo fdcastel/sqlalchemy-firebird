@@ -27,6 +27,8 @@ from sqlalchemy.testing.assertions import eq_
 from sqlalchemy.testing.assertions import is_true
 from sqlalchemy.engine.url import make_url
 from firebird.driver import driver_config
+import sqlalchemy_firebird as sqlalchemy_firebird_pkg
+import sqlalchemy_firebird.types as fb_types
 from sqlalchemy_firebird.firebird import FBDialect_firebird
 
 
@@ -396,6 +398,41 @@ class CreateConnectArgsTest(fixtures.TestBase):
         eq_(opts["database"], "somehost/3050/mydata.fdb")
         assert "host" not in opts
         assert "port" not in opts
+
+
+class PublicExportsTest(fixtures.TestBase):
+    """The package re-exports the Firebird column types so users can do
+    ``from sqlalchemy_firebird import FBVARCHAR, INT128, ...`` (G1)."""
+
+    def test_types_are_exported(self):
+        sfb = sqlalchemy_firebird_pkg
+        for name in (
+            "FBVARCHAR",
+            "FBBLOB",
+            "FBINT128",
+            "FBDECFLOAT",
+            "FBUUID",
+            "FBNUMERIC",
+            "FBTIMESTAMP",
+        ):
+            is_true(hasattr(sfb, name), f"{name} not exported")
+            eq_(getattr(sfb, name), getattr(fb_types, name))
+
+    def test_unprefixed_aliases(self):
+        sfb = sqlalchemy_firebird_pkg
+        eq_(sfb.INT128, fb_types.FBINT128)
+        eq_(sfb.DECFLOAT, fb_types.FBDECFLOAT)
+
+    def test_all_covers_public_types(self):
+        sfb = sqlalchemy_firebird_pkg
+        # Everything advertised in __all__ must be importable.
+        for name in sfb.__all__:
+            is_true(hasattr(sfb, name), f"{name} in __all__ but missing")
+        # Every public (FB-prefixed) type in types.py must be exported, so a
+        # newly added type can't silently go unexported.
+        public_types = [n for n in dir(fb_types) if n.startswith("FB")]
+        missing = [n for n in public_types if n not in sfb.__all__]
+        eq_(missing, [])
 
 
 class DialectNameTest(fixtures.TestBase):
