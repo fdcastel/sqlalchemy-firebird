@@ -32,7 +32,9 @@ jobs:
       #     floor is smoke-tested against the latest Firebird per OS; the
       #     excludes below drop the low-value floor x old-Firebird cells.
       matrix:
-        os: [windows-latest, ubuntu-latest]
+        # ubuntu-22.04 (not ubuntu-latest/24.04): PSFirebird's Firebird
+        # provisioning needs libncurses5, which 24.04 dropped from its repos.
+        os: [windows-latest, ubuntu-22.04]
         python-version: ['3.11', '3.14']
         firebird-version: ['3.0.14', '4.0.7', '5.0.4']
         exclude:
