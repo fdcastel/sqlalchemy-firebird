@@ -12,8 +12,6 @@ from sqlalchemy.testing.suite import (
     CTETest as _CTETest,
     ComponentReflectionTest as _ComponentReflectionTest,
     ComponentReflectionTestExtra as _ComponentReflectionTestExtra,
-    CompoundSelectTest as _CompoundSelectTest,
-    DeprecatedCompoundSelectTest as _DeprecatedCompoundSelectTest,
     IdentityColumnTest as _IdentityColumnTest,
     IdentityReflectionTest as _IdentityReflectionTest,
     StringTest as _StringTest,
@@ -45,13 +43,6 @@ class BizarroCharacterTest(_BizarroCharacterTest):
     reason="These tests fails in Firebird because a DELETE FROM <table> with self-referencing FK raises integrity errors."
 )
 class CTETest(_CTETest):
-    pass
-
-
-@pytest.mark.skip(
-    reason="Firebird requires UNION ORDER BY at the outer level; the deprecated SQLAlchemy 1.x patterns these tests exercise generate ORDER BY in non-final unions."
-)
-class DeprecatedCompoundSelectTest(_DeprecatedCompoundSelectTest):
     pass
 
 
@@ -234,20 +225,6 @@ class ComponentReflectionTestExtra(_ComponentReflectionTestExtra):
         self.compare_table_index_with_expected(
             t2, expected, connection.engine.name
         )
-
-
-class CompoundSelectTest(_CompoundSelectTest):
-    @pytest.mark.skip(reason="Firebird does not support ORDER BY alias")
-    def test_distinct_selectable_in_unions(self):
-        super().test_distinct_selectable_in_unions()
-
-    @pytest.mark.skip(reason="Firebird does not support ORDER BY alias")
-    def test_limit_offset_aliased_selectable_in_unions(self):
-        super().test_limit_offset_aliased_selectable_in_unions()
-
-    @pytest.mark.skip(reason="Firebird does not support ORDER BY alias")
-    def test_plain_union(self):
-        super().test_plain_union()
 
 
 class IdentityColumnTest(_IdentityColumnTest):

@@ -18,6 +18,7 @@ from sqlalchemy.sql import coercions
 from sqlalchemy.sql import compiler
 from sqlalchemy.sql import expression
 from sqlalchemy.sql import roles
+from sqlalchemy.sql import visitors
 
 import sqlalchemy_firebird.types as fb_types
 
@@ -160,6 +161,58 @@ class FBCompiler(sql.compiler.SQLCompiler):
 
     def visit_length_func(self, fn, **kw):
         return "CHAR_LENGTH" + self.function_argspec(fn, **kw)
+
+    def order_by_clause(self, select, **kw):
+        # In a UNION (or other compound select) Firebird only accepts ORDER BY
+        # entries that reference output columns by their 1-based ordinal
+        # position -- "ORDER BY id" / "ORDER BY some_table.id" are rejected with
+        # "invalid ORDER BY clause". Rewrite each ordering term that maps to a
+        # selected column to its ordinal so the standard SQLAlchemy
+        # "union(...).order_by(u.selected_columns.id)" pattern works.
+        if isinstance(select, expression.CompoundSelect):
+            positional = self._compound_order_by_clause(select, **kw)
+            if positional is not None:
+                return positional
+        return super().order_by_clause(select, **kw)
+
+    def _compound_order_by_clause(self, select, **kw):
+        clauses = select._order_by_clauses
+        if not clauses:
+            return ""
+
+        selected = list(select.selected_columns)
+
+        rendered = []
+        for clause in clauses:
+            # Unwrap the ASC/DESC/NULLS modifiers (each a UnaryExpression) to
+            # reach the column being ordered on; only a bare column maps to an
+            # ordinal -- an expression like (id + 1) must not be rewritten, or
+            # we would emit a positionally-wrong "ORDER BY 1 + 1".
+            node = clause
+            while (
+                isinstance(node, expression.UnaryExpression)
+                and node.modifier is not None
+            ):
+                node = node.element
+
+            target = select.selected_columns.corresponding_column(
+                node, require_embedded=False
+            )
+            if target is None:
+                # Not a simple column reference -- fall back to the default
+                # rendering for the whole clause (Firebird may still reject it,
+                # exactly as before this override).
+                return None
+
+            ordinal = sql.literal_column(str(selected.index(target) + 1))
+            # Swap just the column leaf for its ordinal, keeping any DESC /
+            # NULLS modifiers intact.
+            positional_clause = visitors.replacement_traverse(
+                clause, {}, lambda e: ordinal if e is node else None
+            )
+            rendered.append(self.process(positional_clause, **kw))
+
+        return " ORDER BY " + ", ".join(rendered)
 
     def default_from(self):
         return " FROM rdb$database"

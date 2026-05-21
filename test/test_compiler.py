@@ -18,6 +18,7 @@ from sqlalchemy import table
 from sqlalchemy import Table
 from sqlalchemy import testing
 from sqlalchemy import text
+from sqlalchemy import union
 from sqlalchemy import update
 from sqlalchemy.sql import sqltypes
 from sqlalchemy.testing import assert_raises_message
@@ -86,6 +87,56 @@ class CompileTest(fixtures.TablesTest, AssertsCompiledSQL):
     def test_quoting_initial_chars(self):
         self.assert_compile(column("_somecol"), '"_somecol"')
         self.assert_compile(column("$somecol"), '"$somecol"')
+
+    def test_compound_select_order_by_positional(self):
+        # Firebird only accepts ORDER BY by ordinal position in a UNION, so the
+        # dialect rewrites a selected-column reference to its ordinal. This is
+        # what makes union(...).order_by(u.selected_columns.<col>) work.
+        t = table("sometable", column("col1"), column("col2"), column("col3"))
+        u = union(
+            select(t).where(t.c.col1 == 1),
+            select(t).where(t.c.col1 == 2),
+        )
+        base = (
+            "SELECT sometable.col1, sometable.col2, sometable.col3 "
+            "FROM sometable WHERE sometable.col1 = CAST(:col1_1 AS INTEGER) "
+            "UNION SELECT sometable.col1, sometable.col2, sometable.col3 "
+            "FROM sometable WHERE sometable.col1 = CAST(:col1_2 AS INTEGER)"
+        )
+
+        # Plain column -> ordinal.
+        self.assert_compile(
+            u.order_by(u.selected_columns.col1), base + " ORDER BY 1"
+        )
+        # Several columns plus DESC are kept around the ordinal.
+        self.assert_compile(
+            u.order_by(
+                u.selected_columns.col3, u.selected_columns.col1.desc()
+            ),
+            base + " ORDER BY 3, 1 DESC",
+        )
+        # NULLS modifiers are preserved too.
+        self.assert_compile(
+            u.order_by(u.selected_columns.col1.desc().nulls_last()),
+            base + " ORDER BY 1 DESC NULLS LAST",
+        )
+        # An expression that is not a bare selected column must NOT be
+        # rewritten -- otherwise "col1 + 1" would become a positionally-wrong
+        # "ORDER BY 2". It falls back to the default rendering.
+        self.assert_compile(
+            u.order_by(u.selected_columns.col1 + 1),
+            base + " ORDER BY col1 + CAST(:col1_3 AS INTEGER)",
+        )
+
+    def test_plain_select_order_by_uses_column_name(self):
+        # Only compound selects switch to positional ordering; a regular
+        # SELECT still orders by the column expression.
+        t = table("sometable", column("col1"), column("col2"))
+        self.assert_compile(
+            select(t).order_by(t.c.col1),
+            "SELECT sometable.col1, sometable.col2 FROM sometable "
+            "ORDER BY sometable.col1",
+        )
 
     #
     # Tests from postgresql/test_compiler.py

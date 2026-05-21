@@ -18,6 +18,7 @@ from sqlalchemy import Table
 from sqlalchemy import testing
 from sqlalchemy import text
 from sqlalchemy import Time
+from sqlalchemy import union
 from sqlalchemy.testing import assert_raises
 from sqlalchemy.testing import AssertsExecutionResults
 from sqlalchemy.testing import engines
@@ -76,6 +77,61 @@ class QueryTest(fixtures.TestBase):
             ),
         ):
             eq_(connection.scalar(expr), result)
+
+
+class CompoundSelectOrderByTest(fixtures.TablesTest):
+    """Real-DB coverage for the positional ORDER BY rewrite in compound
+    selects (the modifier-carrying cases the compliance suite doesn't
+    exercise)."""
+
+    __backend__ = True
+    run_inserts = "once"
+    run_deletes = None
+
+    @classmethod
+    def define_tables(cls, metadata):
+        Table(
+            "cs_data",
+            metadata,
+            Column("id", Integer, primary_key=True, autoincrement=False),
+            Column("x", Integer),
+            Column("y", Integer),
+        )
+
+    @classmethod
+    def insert_data(cls, connection):
+        connection.execute(
+            cls.tables.cs_data.insert(),
+            [
+                {"id": 1, "x": 1, "y": 9},
+                {"id": 2, "x": 2, "y": 9},
+                {"id": 3, "x": 3, "y": 7},
+                {"id": 4, "x": 4, "y": 7},
+            ],
+        )
+
+    def test_union_order_by_desc(self, connection):
+        t = self.tables.cs_data
+        u = union(
+            select(t).where(t.c.id.in_([1, 3])),
+            select(t).where(t.c.id == 4),
+        )
+        rows = connection.execute(
+            u.order_by(u.selected_columns.id.desc())
+        ).fetchall()
+        eq_(rows, [(4, 4, 7), (3, 3, 7), (1, 1, 9)])
+
+    def test_union_order_by_multi_column(self, connection):
+        # ORDER BY y, id DESC  ->  "ORDER BY 3, 1 DESC" on Firebird.
+        t = self.tables.cs_data
+        u = union(
+            select(t).where(t.c.id.in_([1, 3])),
+            select(t).where(t.c.id.in_([2, 4])),
+        )
+        rows = connection.execute(
+            u.order_by(u.selected_columns.y, u.selected_columns.id.desc())
+        ).fetchall()
+        eq_(rows, [(4, 4, 7), (3, 3, 7), (2, 2, 9), (1, 1, 9)])
 
 
 #

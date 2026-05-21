@@ -1385,8 +1385,10 @@ class Requirements(SuiteRequirements):
 
         """
 
-        # Firebird does not support ORDER BY alias in UNIONs.
-        return exclusions.closed()
+        # Firebird only accepts ORDER BY by ordinal position in a UNION, but
+        # FBCompiler.order_by_clause rewrites a column reference to its ordinal,
+        # so the standard "union(...).order_by(u.selected_columns.id)" works.
+        return exclusions.open()
 
     @property
     def order_by_label_with_expression(self):
