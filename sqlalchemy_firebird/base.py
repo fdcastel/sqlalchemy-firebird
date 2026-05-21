@@ -17,6 +17,7 @@ from sqlalchemy.engine.interfaces import BindTyping
 from sqlalchemy.sql import coercions
 from sqlalchemy.sql import compiler
 from sqlalchemy.sql import expression
+from sqlalchemy.sql import operators
 from sqlalchemy.sql import roles
 from sqlalchemy.sql import visitors
 
@@ -147,6 +148,49 @@ class FBCompiler(sql.compiler.SQLCompiler):
             self.process(binary.left, **kw),
             self.process(binary.right, **kw),
         )
+
+    def visit_binary(self, binary, **kw):
+        # Firebird date/time arithmetic uses a different unit per operand
+        # type: DATE and TIMESTAMP work in days (matching _FBInterval's day
+        # storage), but TIME works in seconds. _FBInterval keeps everything in
+        # days, so scale only the TIME cases here.
+        if binary.operator in (operators.add, operators.sub):
+            scaled = self._visit_time_interval_binary(binary, **kw)
+            if scaled is not None:
+                return scaled
+        return super().visit_binary(binary, **kw)
+
+    def _visit_time_interval_binary(self, binary, **kw):
+        op = binary.operator
+        left, right = binary.left, binary.right
+        left_time = isinstance(left.type, sa_types.Time)
+        right_time = isinstance(right.type, sa_types.Time)
+        left_interval = isinstance(left.type, sa_types.Interval)
+        right_interval = isinstance(right.type, sa_types.Interval)
+        opstr = " + " if op is operators.add else " - "
+
+        # TIME +/- interval: the interval is stored in days, but Firebird
+        # adds/subtracts a number to a TIME as seconds -> scale by 86400.
+        if left_time and right_interval:
+            return "(%s%s(%s * 86400))" % (
+                self.process(left, **kw),
+                opstr,
+                self.process(right, **kw),
+            )
+        if op is operators.add and right_time and left_interval:
+            return "((%s * 86400)%s%s)" % (
+                self.process(left, **kw),
+                opstr,
+                self.process(right, **kw),
+            )
+        # TIME - TIME: Firebird returns the difference in seconds, but the
+        # _FBInterval result is read as days -> scale back to days.
+        if op is operators.sub and left_time and right_time:
+            return "((%s - %s) / 86400.0)" % (
+                self.process(left, **kw),
+                self.process(right, **kw),
+            )
+        return None
 
     def _coerce_like_pattern(self, binary):
         # SQLAlchemy types a LIKE pattern after the column being matched, so

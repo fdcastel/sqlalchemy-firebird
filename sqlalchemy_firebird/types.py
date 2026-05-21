@@ -267,11 +267,12 @@ class _FBNumericInterval(FBNUMERIC):
 class _FBInterval(sqltypes.Interval):
     """A type for ``datetime.timedelta()`` objects.
 
-    Value is stored as number of days.
+    The value is stored as a number of days, which matches Firebird's
+    DATE/TIMESTAMP arithmetic. TIME arithmetic instead works in seconds, so
+    ``FBCompiler.visit_binary`` scales the TIME cases (``TIME +/- interval``
+    and ``TIME - TIME``) by 86400.
+    https://firebirdsql.org/file/documentation/html/en/refdocs/fblangref50/firebird-50-language-reference.html#fblangref50-datatypes-datetimeops
     """
-
-    # ToDo: Fix operations with TIME datatype (operand must be in seconds, not in days)
-    #   https://firebirdsql.org/file/documentation/html/en/refdocs/fblangref50/firebird-50-language-reference.html#fblangref50-datatypes-datetimeops
 
     impl = _FBNumericInterval
     cache_ok = True
@@ -312,11 +313,17 @@ class _FBInterval(sqltypes.Interval):
                 dt_value = fixed_impl_processor(value)
                 if dt_value is None:
                     return None
-                return dt.timedelta(days=dt_value)
+                # The value comes back as a NUMERIC (decimal.Decimal);
+                # timedelta needs a float/int.
+                return dt.timedelta(days=float(dt_value))
 
         else:
 
             def process(value: Any) -> Optional[dt.timedelta]:
-                return dt.timedelta(days=value) if value is not None else None
+                return (
+                    dt.timedelta(days=float(value))
+                    if value is not None
+                    else None
+                )
 
         return process

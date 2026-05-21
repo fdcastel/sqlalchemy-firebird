@@ -223,6 +223,69 @@ class UpdateOrInsertTest(fixtures.TablesTest):
         eq_(self._all(connection), [(1, "A"), (2, "B")])
 
 
+class IntervalArithmeticTest(fixtures.TablesTest):
+    """Temporal arithmetic round-trips: Firebird uses days for DATE/TIMESTAMP
+    but seconds for TIME; _FBInterval reconciles both (J11)."""
+
+    __backend__ = True
+    run_inserts = "once"
+    run_deletes = None
+
+    @classmethod
+    def define_tables(cls, metadata):
+        Table(
+            "dta",
+            metadata,
+            Column("id", Integer, primary_key=True, autoincrement=False),
+            Column("d", Date),
+            Column("ts", DateTime),
+            Column("tm", Time),
+            Column("tm2", Time),
+        )
+
+    @classmethod
+    def insert_data(cls, connection):
+        connection.execute(
+            cls.tables.dta.insert(),
+            {
+                "id": 1,
+                "d": datetime.date(2024, 1, 1),
+                "ts": datetime.datetime(2024, 1, 1, 12, 0, 0),
+                "tm": datetime.time(12, 0, 0),
+                "tm2": datetime.time(13, 30, 0),
+            },
+        )
+
+    def test_date_plus_interval(self, connection):
+        t = self.tables.dta
+        eq_(
+            connection.scalar(select(t.c.d + datetime.timedelta(days=2))),
+            datetime.date(2024, 1, 3),
+        )
+
+    def test_timestamp_plus_interval(self, connection):
+        t = self.tables.dta
+        eq_(
+            connection.scalar(
+                select(t.c.ts + datetime.timedelta(hours=1, minutes=30))
+            ),
+            datetime.datetime(2024, 1, 1, 13, 30),
+        )
+
+    def test_time_plus_minus_interval(self, connection):
+        t = self.tables.dta
+        d = datetime.timedelta(hours=1, minutes=30)
+        eq_(connection.scalar(select(t.c.tm + d)), datetime.time(13, 30))
+        eq_(connection.scalar(select(t.c.tm - d)), datetime.time(10, 30))
+
+    def test_time_minus_time(self, connection):
+        t = self.tables.dta
+        eq_(
+            connection.scalar(select(t.c.tm2 - t.c.tm)),
+            datetime.timedelta(hours=1, minutes=30),
+        )
+
+
 class AnalyticsTest(fixtures.TablesTest):
     """FB4+ analytics work through SQLAlchemy core: aggregate FILTER, window
     ranking functions and LATERAL joins (J10)."""

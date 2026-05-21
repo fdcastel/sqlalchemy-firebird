@@ -1,3 +1,5 @@
+import datetime
+
 from sqlalchemy import Date, Identity, and_
 from sqlalchemy import cast
 from sqlalchemy import column
@@ -334,6 +336,33 @@ class CompileTest(fixtures.TablesTest, AssertsCompiledSQL):
         self.assert_compile(
             select(func.ntile(4).over(order_by=t.c.val)),
             "SELECT ntile(4) OVER (ORDER BY tt.val) AS anon_1 FROM tt",
+        )
+
+    def test_time_interval_arithmetic_scaling(self):
+        # DATE/TIMESTAMP arithmetic stays in days (no scaling); TIME works in
+        # seconds, so the interval is scaled by 86400 and TIME - TIME scaled
+        # back to days for _FBInterval (J11).
+        m = MetaData()
+        t = Table(
+            "dta",
+            m,
+            Column("ts", DateTime),
+            Column("tm", Time),
+            Column("tm2", Time),
+        )
+        iv = datetime.timedelta(hours=1)
+        self.assert_compile(
+            select(t.c.ts + iv),
+            "SELECT dta.ts + CAST(:ts_1 AS NUMERIC(18, 9)) AS anon_1 FROM dta",
+        )
+        self.assert_compile(
+            select(t.c.tm + iv),
+            "SELECT (dta.tm + (CAST(:tm_1 AS NUMERIC(18, 9)) * 86400)) "
+            "AS anon_1 FROM dta",
+        )
+        self.assert_compile(
+            select(t.c.tm2 - t.c.tm),
+            "SELECT ((dta.tm2 - dta.tm) / 86400.0) AS anon_1 FROM dta",
         )
 
     def test_fb4_types_rejected_on_firebird_3(self):
