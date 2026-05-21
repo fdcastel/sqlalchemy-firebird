@@ -1,6 +1,6 @@
 # Development notes
 
-Targets Python 3.9+ on Windows/Linux/Mac with `firebird-driver` and SQLAlchemy 2.0+, against Firebird 3.0 or newer.
+Targets Python 3.11+ on Windows/Linux/Mac with `firebird-driver` and SQLAlchemy 2.0+, against Firebird 3.0 or newer.
 
 
 # Windows environment
