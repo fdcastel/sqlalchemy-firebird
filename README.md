@@ -10,7 +10,7 @@ This package targets **SQLAlchemy 2.0+** and **Firebird 3.0+**, using the modern
 pip install sqlalchemy-firebird
 ```
 
-This installs SQLAlchemy 2.0+ and `firebird-driver` automatically. Python 3.9 or newer is required.
+This installs SQLAlchemy 2.0+ and `firebird-driver` automatically. Python 3.11 or newer is required.
 
 ## Connection strings
 
