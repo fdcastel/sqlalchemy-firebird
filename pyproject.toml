@@ -50,6 +50,14 @@ dynamic = ["readme", "version"]
 [dependency-groups]
 dev = ["pytest", "ruff"]
 
+[tool.uv.sources]
+# TEMPORARY (uv/CI/dev only): validate the firebird-driver fix for the Linux
+# Firebird 4.0/5.0 GC-finalization crash (issue #69 / PR #72) before it ships
+# to PyPI. Remove once an official firebird-driver carrying the fix is
+# released. pip installs of this package are unaffected -- [tool.uv.sources]
+# is uv-only and not part of the published metadata (deps stay "firebird-driver").
+firebird-driver = { url = "https://github.com/fdcastel/python3-driver/releases/download/v2.0.4-beta1/firebird_driver-2.0.4b1-py3-none-any.whl" }
+
 [project.urls]
 Documentation = "https://github.com/fdcastel/sqlalchemy-firebird/wiki"
 Source = "https://github.com/fdcastel/sqlalchemy-firebird"

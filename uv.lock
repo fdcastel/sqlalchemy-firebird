@@ -25,15 +25,20 @@ wheels = [
 
 [[package]]
 name = "firebird-driver"
-version = "2.0.3"
-source = { registry = "https://pypi.org/simple" }
+version = "2.0.4b1"
+source = { url = "https://github.com/fdcastel/python3-driver/releases/download/v2.0.4-beta1/firebird_driver-2.0.4b1-py3-none-any.whl" }
 dependencies = [
     { name = "firebird-base" },
     { name = "python-dateutil" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/97/da/48da8f865f17bc7d0184717f8e92d1b7c52418ae77af315c0239cf7f3739/firebird_driver-2.0.3.tar.gz", hash = "sha256:3c78c63a1d69252880b02126c539d4a712d28563f45e896247c397cd2ada75ad", size = 105031, upload-time = "2026-04-20T12:01:55.13Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ff/bf/c396b8725f5d7d0df1c54ea5fecc8d4a99d515a8b116b7915e7813ad2994/firebird_driver-2.0.3-py3-none-any.whl", hash = "sha256:0c4dbea53c8ff003cd1c6fd254524f72757fa921f13a6ae23d846c7071d4f337", size = 109811, upload-time = "2026-04-20T12:01:56.855Z" },
+    { url = "https://github.com/fdcastel/python3-driver/releases/download/v2.0.4-beta1/firebird_driver-2.0.4b1-py3-none-any.whl", hash = "sha256:b71b4f7f56dbc5fee2b5242330717f7696ba38706f34ef1895cf2d8f9fbc261d" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "firebird-base", specifier = "~=2.0" },
+    { name = "python-dateutil", specifier = "~=2.8" },
 ]
 
 [[package]]
@@ -264,7 +269,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "firebird-driver" },
+    { name = "firebird-driver", url = "https://github.com/fdcastel/python3-driver/releases/download/v2.0.4-beta1/firebird_driver-2.0.4b1-py3-none-any.whl" },
     { name = "sqlalchemy", specifier = ">=2.0" },
 ]
 
