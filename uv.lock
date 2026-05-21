@@ -253,7 +253,6 @@ name = "sqlalchemy-firebird"
 source = { editable = "." }
 dependencies = [
     { name = "firebird-driver" },
-    { name = "packaging" },
     { name = "sqlalchemy" },
 ]
 
@@ -266,7 +265,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "firebird-driver" },
-    { name = "packaging" },
     { name = "sqlalchemy", specifier = ">=2.0" },
 ]
 

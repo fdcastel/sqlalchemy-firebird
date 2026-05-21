@@ -37,9 +37,12 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
+    # The dialect uses only SQLAlchemy 2.0 APIs (batched get_multi_*
+    # reflection, Uuid/UUID, ObjectKind/ObjectScope, ReflectionDefaults).
+    # The test suite's SQLAlchemy 2.1+ features are optional, guarded behind
+    # try/except, so 2.0 is the true runtime minimum.
     "SQLAlchemy >= 2.0",
     "firebird-driver",
-    "packaging",
 ]
 dynamic = ["readme", "version"]
 
