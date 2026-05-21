@@ -978,15 +978,31 @@ class FBDialect(default.DefaultDialect):
     def initialize(self, connection):
         super().initialize(connection)
 
-        if self.server_version_info < (4,):
-            # Firebird 3.0
-            from .fb_info30 import MAX_IDENTIFIER_LENGTH, RESERVED_WORDS
-        else:
-            # Firebird 4.0 or higher
+        if self._server_at_least(4):
             from .fb_info40 import MAX_IDENTIFIER_LENGTH, RESERVED_WORDS
+        else:
+            from .fb_info30 import MAX_IDENTIFIER_LENGTH, RESERVED_WORDS
+
+        reserved_words = RESERVED_WORDS
+        if self._has_rdb_keywords:
+            # Firebird 5.0+ publishes the live keyword list as RDB$KEYWORDS;
+            # prefer the server's reserved words over the bundled fb_info40
+            # set so quoting tracks the running server as it evolves. Fall
+            # back to the bundled set if the table is somehow empty.
+            live = self._reflect_reserved_words(connection)
+            if live:
+                reserved_words = live
 
         self.max_identifier_length = MAX_IDENTIFIER_LENGTH
-        self.preparer.reserved_words = RESERVED_WORDS
+        self.preparer.reserved_words = reserved_words
+
+    @staticmethod
+    def _reflect_reserved_words(connection):
+        rows = connection.exec_driver_sql(
+            "SELECT TRIM(rdb$keyword_name) FROM rdb$keywords "
+            "WHERE rdb$keyword_reserved = TRUE"
+        ).fetchall()
+        return {row[0].lower() for row in rows}
 
     @reflection.cache
     def has_table(self, connection, table_name, schema=None, **kw):

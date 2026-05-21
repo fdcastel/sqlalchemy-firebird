@@ -580,6 +580,32 @@ class CapabilityFlagsTest(fixtures.TestBase):
             is_true(getattr(d, name), name)
 
 
+class ReservedWordsTest(fixtures.TestBase):
+    """On Firebird 5.0+ the preparer's reserved words come from the live
+    RDB$KEYWORDS table; older servers use the bundled fb_info30/40 sets (J5)."""
+
+    __backend__ = True
+
+    @testing.requires.firebird_5_or_higher
+    def test_reserved_words_from_live_rdb_keywords(self, connection):
+        live = {
+            row[0].strip().lower()
+            for row in connection.exec_driver_sql(
+                "SELECT rdb$keyword_name FROM rdb$keywords "
+                "WHERE rdb$keyword_reserved = TRUE"
+            )
+        }
+        is_true(len(live) > 0)
+        eq_(connection.dialect.identifier_preparer.reserved_words, live)
+
+    def test_reserved_word_is_quoted(self, connection):
+        # A reserved identifier is quoted on every supported version.
+        eq_(
+            connection.dialect.identifier_preparer.quote("select"),
+            '"select"',
+        )
+
+
 class DialectNameTest(fixtures.TestBase):
     def test_dialect_name_is_backend_name(self):
         # By SQLAlchemy convention dialect.name is the backend name
