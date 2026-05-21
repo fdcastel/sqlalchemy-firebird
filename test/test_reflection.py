@@ -750,6 +750,34 @@ class ReflectionTest(
             },
         )
 
+    def test_get_sequence_names_ordered(self, metadata, connection):
+        for name in ["d3_seq_c", "d3_seq_a", "d3_seq_b"]:
+            Sequence(name, metadata=metadata)
+        metadata.create_all(connection)
+
+        names = inspect(connection).get_sequence_names()
+        ours = [n for n in names if n.startswith("d3_seq_")]
+        eq_(ours, ["d3_seq_a", "d3_seq_b", "d3_seq_c"])
+
+    def test_get_sequences_options(self, metadata, connection):
+        Sequence("d3_opt_seq", start=42, increment=1, metadata=metadata)
+        metadata.create_all(connection)
+
+        seqs = {s["name"]: s for s in inspect(connection).get_sequences()}
+        assert "d3_opt_seq" in seqs
+        eq_(seqs["d3_opt_seq"]["start"], 42)
+        eq_(seqs["d3_opt_seq"]["increment"], 1)
+
+    @testing.requires.firebird_4_or_higher
+    def test_get_sequences_custom_increment(self, metadata, connection):
+        # INCREMENT BY for sequences only exists on Firebird 4.0+.
+        Sequence("d3_inc_seq", start=10, increment=5, metadata=metadata)
+        metadata.create_all(connection)
+
+        seqs = {s["name"]: s for s in inspect(connection).get_sequences()}
+        eq_(seqs["d3_inc_seq"]["start"], 10)
+        eq_(seqs["d3_inc_seq"]["increment"], 5)
+
     def test_has_index_native(self, metadata, connection):
         """has_index resolves via a single direct rdb$indices lookup."""
         t = Table(

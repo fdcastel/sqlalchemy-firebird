@@ -556,6 +556,17 @@ class ReflectedDomain(TypedDict):
     """
 
 
+class ReflectedSequence(TypedDict):
+    """Represents a reflected sequence (generator)."""
+
+    name: str
+    """The name of the sequence."""
+    start: Optional[int]
+    """The sequence's initial value (``rdb$initial_value``)."""
+    increment: Optional[int]
+    """The sequence's increment (``rdb$generator_increment``)."""
+
+
 class FBInspector(reflection.Inspector):
     dialect: FBDialect
 
@@ -564,6 +575,16 @@ class FBInspector(reflection.Inspector):
     ) -> List[ReflectedDomain]:
         with self._operation_context() as conn:
             return self.dialect._load_domains(
+                conn, schema, info_cache=self.info_cache
+            )
+
+    def get_sequences(
+        self, schema: Optional[str] = None
+    ) -> List[ReflectedSequence]:
+        """Firebird-specific: like :meth:`get_sequence_names`, but also
+        reflects each sequence's start value and increment."""
+        with self._operation_context() as conn:
+            return self.dialect._load_sequences(
                 conn, schema, info_cache=self.info_cache
             )
 
@@ -779,10 +800,29 @@ class FBDialect(default.DefaultDialect):
             SELECT TRIM(rdb$generator_name) AS generator_name
             FROM rdb$generators
             WHERE COALESCE(rdb$system_flag, 0) = 0
+            ORDER BY 1
         """
-        # Do not need ORDER BY
         return [
             self.normalize_name(row.generator_name)
+            for row in connection.exec_driver_sql(sequences_query)
+        ]
+
+    @reflection.cache
+    def _load_sequences(self, connection, schema=None, **kw):
+        sequences_query = """
+            SELECT TRIM(rdb$generator_name) AS generator_name,
+                   rdb$initial_value AS initial_value,
+                   rdb$generator_increment AS generator_increment
+            FROM rdb$generators
+            WHERE COALESCE(rdb$system_flag, 0) = 0
+            ORDER BY 1
+        """
+        return [
+            {
+                "name": self.normalize_name(row.generator_name),
+                "start": row.initial_value,
+                "increment": row.generator_increment,
+            }
             for row in connection.exec_driver_sql(sequences_query)
         ]
 
