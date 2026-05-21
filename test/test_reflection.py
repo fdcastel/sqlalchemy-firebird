@@ -17,6 +17,7 @@ from sqlalchemy import String
 from sqlalchemy import Table
 from sqlalchemy import testing
 from sqlalchemy import UniqueConstraint
+from sqlalchemy.engine.reflection import ReflectionDefaults
 from sqlalchemy.schema import CreateIndex
 from sqlalchemy.sql.schema import CheckConstraint
 from sqlalchemy.testing import AssertsCompiledSQL
@@ -749,6 +750,28 @@ class ReflectionTest(
                 "cc4": "b <> 'hi\nim a name   \nyup\n'",
             },
         )
+
+    def test_get_table_comment_defaults(self, metadata, connection):
+        """get_table_comment aligns with ReflectionDefaults.table_comment():
+        a comment-less table yields {"text": None} and a missing table
+        raises NoSuchTableError."""
+        Table(
+            "d4_with_comment",
+            metadata,
+            Column("id", Integer),
+            comment="hello",
+        )
+        Table("d4_no_comment", metadata, Column("id", Integer))
+        metadata.create_all(connection)
+
+        insp = inspect(connection)
+        eq_(insp.get_table_comment("d4_with_comment"), {"text": "hello"})
+        eq_(
+            insp.get_table_comment("d4_no_comment"),
+            ReflectionDefaults.table_comment(),
+        )
+        with pytest.raises(exc.NoSuchTableError):
+            insp.get_table_comment("d4_does_not_exist")
 
     def test_get_sequence_names_ordered(self, metadata, connection):
         for name in ["d3_seq_c", "d3_seq_a", "d3_seq_b"]:
