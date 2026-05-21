@@ -1801,8 +1801,9 @@ class Requirements(SuiteRequirements):
     # 1993
     @property
     def uuid_data_type(self):
-        # Firebird does not have a native UUID data type.
-        return exclusions.closed()
+        # Firebird has no UUID SQL type, but the dialect stores UUIDs in their
+        # canonical 16-byte form (BINARY(16) / CHAR(16) OCTETS) via FBUUID.
+        return exclusions.open()
 
     #
     # Firebird helpers

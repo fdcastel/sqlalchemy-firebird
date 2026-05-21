@@ -1,8 +1,14 @@
+import uuid
+
 from sqlalchemy import Column
 from sqlalchemy import Float
+from sqlalchemy import func
+from sqlalchemy import Integer
 from sqlalchemy import MetaData
+from sqlalchemy import select
 from sqlalchemy import Table
 from sqlalchemy import testing
+from sqlalchemy import Uuid
 from sqlalchemy.testing import eq_
 from sqlalchemy.testing import fixtures
 from sqlalchemy.testing import is_instance_of
@@ -293,6 +299,59 @@ class TypesTest(fixtures.TestBase):
             eq_col(
                 rt.columns["fd18"], fb_types.FBDECIMAL, precision=18, scale=4
             ),
+        )
+
+    def test_uuid_ddl_is_16_byte_storage(self):
+        # A native Uuid renders as the canonical 16-byte container
+        # (BINARY(16) on FB4+, CHAR(16) OCTETS on FB3), not the CHAR(32)
+        # hex-string fallback. native_uuid=False keeps CHAR(32).
+        tc = testing.db.dialect.type_compiler_instance
+        if testing.requires.firebird_4_or_higher.enabled:
+            eq_(tc.process(Uuid()), "BINARY(16)")
+        else:
+            eq_(tc.process(Uuid()), "CHAR(16) CHARACTER SET OCTETS")
+        eq_(tc.process(Uuid(native_uuid=False)), "CHAR(32)")
+
+    @testing.provide_metadata
+    def test_uuid_native_storage_round_trip(self, connection):
+        t = Table(
+            "test_uuid_storage",
+            self.metadata,
+            Column("id", Integer, primary_key=True),
+            Column("u", Uuid),
+            Column("u_nonnative", Uuid(native_uuid=False)),
+        )
+        self.metadata.create_all(testing.db)
+
+        # Reflects back as the 16-byte binary container.
+        rm = MetaData()
+        rt = Table("test_uuid_storage", rm, autoload_with=testing.db)
+        eq_col(rt.columns["u"], fb_types.FBBINARY, length=16)
+
+        data = uuid.uuid4()
+        connection.execute(
+            t.insert(), {"id": 1, "u": data, "u_nonnative": data}
+        )
+
+        # Physical storage is 16 bytes for the native Uuid, 32 for the
+        # native_uuid=False CHAR(32) hex form.
+        eq_(
+            connection.execute(
+                select(func.octet_length(t.c.u)).where(t.c.id == 1)
+            ).scalar(),
+            16,
+        )
+        eq_(
+            connection.execute(
+                select(func.octet_length(t.c.u_nonnative)).where(t.c.id == 1)
+            ).scalar(),
+            32,
+        )
+
+        # Round-trips back to the original uuid object.
+        eq_(
+            connection.execute(select(t.c.u).where(t.c.id == 1)).scalar(),
+            data,
         )
 
     @testing.provide_metadata

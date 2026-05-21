@@ -467,6 +467,20 @@ class FBTypeCompiler(compiler.GenericTypeCompiler):
 
         return text
 
+    def visit_uuid(self, type_, **kw):
+        # Firebird has no UUID SQL type. Store the canonical 16-byte form as
+        # BINARY(16) (rendered as CHAR(16) CHARACTER SET OCTETS on FB3 by
+        # _render_firebird_string_type). ``native_uuid=False`` keeps the
+        # backend-agnostic CHAR(32) hex-string storage.
+        if not type_.native_uuid:
+            return self._render_firebird_string_type("CHAR", 32)
+        return self._render_firebird_string_type("BINARY", 16)
+
+    def visit_UUID(self, type_, **kw):
+        # The explicit UUID type is always native; render the same 16-byte
+        # storage as the generic Uuid type above.
+        return self.visit_uuid(type_, **kw)
+
     def visit_INT128(self, type_, **kw):
         return "INT128"
 
@@ -610,6 +624,10 @@ class FBDialect(default.DefaultDialect):
 
     supports_native_boolean = True
     supports_native_decimal = True
+    # Firebird stores UUIDs in their canonical 16-byte form (BINARY(16) /
+    # CHAR(16) OCTETS); see FBUUID. The conversion is handled by FBUUID's
+    # bind/result processors, not by the driver.
+    supports_native_uuid = True
 
     supports_schemas = False
     supports_sequences = True
@@ -655,6 +673,7 @@ class FBDialect(default.DefaultDialect):
         sa_types.BINARY: fb_types.FBBINARY,
         sa_types.VARBINARY: fb_types.FBVARBINARY,
         sa_types.LargeBinary: fb_types.FBBLOB,
+        sa_types.Uuid: fb_types.FBUUID,
     }
 
     # SELECT TRIM(rdb$type_name) FROM rdb$types WHERE rdb$field_name = 'RDB$FIELD_TYPE' ORDER BY 1

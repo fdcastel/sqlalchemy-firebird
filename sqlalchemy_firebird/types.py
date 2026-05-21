@@ -1,4 +1,5 @@
 import datetime as dt
+import uuid as _uuid
 
 from typing import Any
 from typing import Optional
@@ -143,6 +144,84 @@ class FBBIGINT(_FBInteger):
 
 class FBINT128(_FBInteger):
     __visit_name__ = "INT128"
+
+
+class FBUUID(sqltypes.Uuid):
+    """Firebird UUID storage.
+
+    Firebird has no dedicated ``UUID`` SQL type. A UUID is stored in its
+    canonical 16-byte form -- ``BINARY(16)`` on Firebird 4.0+ and
+    ``CHAR(16) CHARACTER SET OCTETS`` on Firebird 3.0 (the same physical
+    container; see ``FBTypeCompiler.visit_uuid``). ``GEN_UUID()`` produces
+    these 16-byte values server-side.
+
+    Only the ``native_uuid=True`` form (the default) uses the 16-byte
+    storage; ``Uuid(native_uuid=False)`` keeps SQLAlchemy's backend-agnostic
+    ``CHAR(32)`` hex-string behaviour, so both round-trip correctly.
+    """
+
+    render_bind_cast = True
+    cache_ok = True
+
+    def __init__(self, as_uuid: bool = True, native_uuid: bool = True):
+        super().__init__(as_uuid=as_uuid, native_uuid=native_uuid)
+
+    def bind_processor(self, dialect: Dialect):
+        if not self.native_uuid:
+            # CHAR(32) hex-string storage -- defer to the generic Uuid.
+            return super().bind_processor(dialect)
+
+        if self.as_uuid:
+
+            def process(value: Optional[_uuid.UUID]):
+                return value.bytes if value is not None else None
+
+        else:
+
+            def process(value: Optional[str]):
+                return _uuid.UUID(value).bytes if value is not None else None
+
+        return process
+
+    def result_processor(self, dialect: Dialect, coltype: Any):
+        if not self.native_uuid:
+            return super().result_processor(dialect, coltype)
+
+        if self.as_uuid:
+
+            def process(value: Any) -> Optional[_uuid.UUID]:
+                return (
+                    _uuid.UUID(bytes=bytes(value))
+                    if value is not None
+                    else None
+                )
+
+        else:
+
+            def process(value: Any) -> Optional[str]:
+                return (
+                    str(_uuid.UUID(bytes=bytes(value)))
+                    if value is not None
+                    else None
+                )
+
+        return process
+
+    def literal_processor(self, dialect: Dialect):
+        if not self.native_uuid:
+            return super().literal_processor(dialect)
+
+        if self.as_uuid:
+
+            def process(value: _uuid.UUID) -> str:
+                return "x'%s'" % value.hex
+
+        else:
+
+            def process(value: str) -> str:
+                return "x'%s'" % _uuid.UUID(value).hex
+
+        return process
 
 
 class FBBOOLEAN(sqltypes.BOOLEAN):
