@@ -435,6 +435,34 @@ class PublicExportsTest(fixtures.TestBase):
         eq_(missing, [])
 
 
+class DocumentedKwargsTest(fixtures.TestBase):
+    """The dialect-specific construct arguments named in the dialect docs
+    must stay registered (G2)."""
+
+    def test_index_kwargs(self):
+        from sqlalchemy import Index
+
+        m = MetaData()
+        t = Table("dk_t", m, Column("c", Integer))
+        ix = Index(
+            "dk_ix",
+            t.c.c,
+            firebird_descending=True,
+            firebird_where=t.c.c > 0,
+        )
+        eq_(ix.dialect_options["firebird"]["descending"], True)
+        is_true(ix.dialect_options["firebird"]["where"] is not None)
+
+    def test_table_on_commit_kwarg(self):
+        t = Table(
+            "dk_gtt",
+            MetaData(),
+            Column("c", Integer),
+            firebird_on_commit="PRESERVE ROWS",
+        )
+        eq_(t.dialect_options["firebird"]["on_commit"], "PRESERVE ROWS")
+
+
 class DialectNameTest(fixtures.TestBase):
     def test_dialect_name_is_backend_name(self):
         # By SQLAlchemy convention dialect.name is the backend name
