@@ -40,6 +40,10 @@ The dialect adapts its SQL to ``server_version_info``:
   has different semantics. Firebird 4.0+ supports ``GENERATED ALWAYS`` and
   ``INCREMENT BY``.
 * **INT128, DECFLOAT(16|34), TIME / TIMESTAMP WITH TIME ZONE** -- Firebird 4.0+.
+  Using any of these against a Firebird 3.0 server raises a clear
+  ``CompileError`` instead of emitting SQL the server can't parse. (The
+  reverse case -- a Firebird 4.0+ server with a *client* that lags -- can be
+  bridged with ``SET BIND OF <type> TO ...`` issued on the connection.)
 * **BINARY / VARBINARY** -- native on Firebird 4.0+; emulated as
   ``CHAR/VARCHAR CHARACTER SET OCTETS`` on Firebird 3.0.
 * **UUID** -- stored in its canonical 16-byte form: ``BINARY(16)`` on Firebird

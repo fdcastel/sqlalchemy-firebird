@@ -3,7 +3,9 @@ from sqlalchemy import cast
 from sqlalchemy import column
 from sqlalchemy import Column
 from sqlalchemy import Computed
+from sqlalchemy import DateTime
 from sqlalchemy import exc
+from sqlalchemy import Time
 from sqlalchemy import func
 from sqlalchemy import insert
 from sqlalchemy import Index
@@ -311,6 +313,40 @@ class CompileTest(fixtures.TablesTest, AssertsCompiledSQL):
             "UPDATE OR INSERT INTO t (id, data) VALUES "
             "(CAST(:id AS INTEGER), CAST(:data AS VARCHAR(50))) "
             "MATCHING (id) ROWS 2 TO 5",
+        )
+
+    def test_fb4_types_rejected_on_firebird_3(self):
+        # INT128 / DECFLOAT / WITH TIME ZONE raise a clear CompileError on
+        # FB3 instead of emitting SQL the server can't parse (J3).
+        d3 = FBDialect_firebird()
+        d3.server_version_info = (3, 0, 0)
+        cases = [
+            (FbTypes.FBINT128(), "INT128 requires Firebird 4.0"),
+            (FbTypes.FBDECFLOAT(), "DECFLOAT requires Firebird 4.0"),
+            (
+                DateTime(timezone=True),
+                "TIMESTAMP WITH TIME ZONE requires Firebird 4.0",
+            ),
+            (Time(timezone=True), "TIME WITH TIME ZONE requires Firebird 4.0"),
+        ]
+        for type_, msg in cases:
+            assert_raises_message(
+                exc.CompileError,
+                msg,
+                d3.type_compiler_instance.process,
+                type_,
+            )
+
+    def test_fb3_non_tz_temporal_still_renders(self):
+        # timezone=False temporal types stay valid on FB3.
+        d3 = FBDialect_firebird()
+        d3.server_version_info = (3, 0, 0)
+        eq_ignore_whitespace(
+            d3.type_compiler_instance.process(DateTime(timezone=False)),
+            "TIMESTAMP",
+        )
+        eq_ignore_whitespace(
+            d3.type_compiler_instance.process(Time(timezone=False)), "TIME"
         )
 
     def test_update_or_insert_order_rows_requires_firebird_5(self):

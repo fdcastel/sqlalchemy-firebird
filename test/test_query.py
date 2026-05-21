@@ -769,7 +769,13 @@ class ExtractTest(fixtures.TablesTest):
             Column("dt", Date),
             Column("tm", Time),
             Column("intv", _FBInterval),
-            Column("dttz", DateTime(timezone=True)),
+            # WITH TIME ZONE is FB4+ only (and now raises on FB3); the dttz
+            # tests below are gated on datetime_timezone, so degrade the column
+            # to a plain TIMESTAMP on FB3 where those tests skip anyway.
+            Column(
+                "dttz",
+                DateTime(timezone=requires.datetime_timezone.enabled),
+            ),
         )
 
     @classmethod

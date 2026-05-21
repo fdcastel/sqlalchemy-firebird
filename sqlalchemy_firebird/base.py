@@ -644,12 +644,16 @@ class FBTypeCompiler(compiler.GenericTypeCompiler):
         return self.visit_uuid(type_, **kw)
 
     def visit_INT128(self, type_, **kw):
+        if not self.dialect._has_int128:
+            raise exc.CompileError("INT128 requires Firebird 4.0 or higher.")
         return "INT128"
 
     def visit_FLOAT(self, type_, **kw):
         return "FLOAT" + (type_.precision and "(%d)" % type_.precision or "")
 
     def visit_DECFLOAT(self, type_, **kw):
+        if not self.dialect._has_decfloat:
+            raise exc.CompileError("DECFLOAT requires Firebird 4.0 or higher.")
         return "DECFLOAT" + (
             type_.precision and "(%d)" % type_.precision or ""
         )
@@ -668,6 +672,10 @@ class FBTypeCompiler(compiler.GenericTypeCompiler):
 
     def visit_TIMESTAMP(self, type_, **kw):
         if not self.dialect._has_time_zone_types:
+            if type_.timezone:
+                raise exc.CompileError(
+                    "TIMESTAMP WITH TIME ZONE requires Firebird 4.0 or higher."
+                )
             return super().visit_TIMESTAMP(type_, **kw)
 
         return "TIMESTAMP%s %s" % (
@@ -681,6 +689,10 @@ class FBTypeCompiler(compiler.GenericTypeCompiler):
 
     def visit_TIME(self, type_, **kw):
         if not self.dialect._has_time_zone_types:
+            if type_.timezone:
+                raise exc.CompileError(
+                    "TIME WITH TIME ZONE requires Firebird 4.0 or higher."
+                )
             return super().visit_TIME(type_, **kw)
 
         return "TIME%s %s" % (
