@@ -169,6 +169,26 @@ class CompileTest(fixtures.TablesTest, AssertsCompiledSQL):
             "SELECT t.x FROM t WHERE t.x LIKE t.y",
         )
 
+    def test_insert_from_select_cte_follows_insert(self):
+        # Firebird needs the CTE to follow "INSERT INTO t (...)" rather than
+        # precede the whole statement (cte_follows_insert=True); the standard
+        # "WITH ... INSERT INTO ..." form is a syntax error on Firebird.
+        m = MetaData()
+        src = Table(
+            "src", m, Column("id", Integer), Column("data", String(50))
+        )
+        dst = Table(
+            "dst", m, Column("id", Integer), Column("data", String(50))
+        )
+        cte = select(src).where(src.c.id > 1).cte("c")
+        self.assert_compile(
+            dst.insert().from_select(["id", "data"], select(cte)),
+            "INSERT INTO dst (id, data) WITH c AS "
+            "(SELECT src.id AS id, src.data AS data FROM src "
+            "WHERE src.id > CAST(:id_1 AS INTEGER)) "
+            "SELECT c.id, c.data FROM c",
+        )
+
     #
     # Tests from postgresql/test_compiler.py
     #

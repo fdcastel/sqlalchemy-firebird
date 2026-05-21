@@ -726,6 +726,12 @@ class FBDialect(default.DefaultDialect):
     supports_sane_rowcount = True
     supports_sane_multi_rowcount = False
 
+    # Firebird wants a CTE used by an INSERT...FROM SELECT to follow the
+    # "INSERT INTO t (...)" (as part of the SELECT), not precede the whole
+    # statement: "INSERT INTO t (...) WITH cte AS (...) SELECT ...". The
+    # standard "WITH ... INSERT INTO ..." form is a syntax error.
+    cte_follows_insert = True
+
     supports_native_boolean = True
     supports_native_decimal = True
     # Firebird stores UUIDs in their canonical 16-byte form (BINARY(16) /

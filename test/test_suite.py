@@ -38,11 +38,14 @@ class BizarroCharacterTest(_BizarroCharacterTest):
     pass
 
 
-@pytest.mark.skip(
-    reason="These tests fails in Firebird because a DELETE FROM <table> with self-referencing FK raises integrity errors."
-)
 class CTETest(_CTETest):
-    pass
+    # Firebird enforces FK constraints immediately (no DEFERRABLE / SET
+    # CONSTRAINTS), so the suite's run_deletes="each" bulk "DELETE FROM
+    # some_table" on the self-referential FK violates the constraint mid-
+    # statement. Recreate the tables between tests instead of deleting rows;
+    # the CTE round-trips themselves work fine on Firebird.
+    run_create_tables = "each"
+    run_deletes = None
 
 
 class ComponentReflectionTest(_ComponentReflectionTest):
