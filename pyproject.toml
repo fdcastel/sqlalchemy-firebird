@@ -1,5 +1,5 @@
 [tool.pytest.ini_options]
-addopts = "--tb native -v -r fxX --maxfail=100 -p no:warnings --log-info=sqlalchemy.engine "
+addopts = "--tb native -v -r fxX --maxfail=100 -p no:warnings --log-info=sqlalchemy.engine --ignore=tmp "
 
 markers = [
     "backend: mark test as for the backend",
