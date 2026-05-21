@@ -15,36 +15,144 @@ import sys
 from datetime import datetime
 from datetime import time
 from math import modf
-from sqlalchemy import util
+from sqlalchemy.engine import characteristics
 from .base import FBDialect
 
 import firebird.driver
 from firebird.driver import driver_config
 from firebird.driver import get_timezone
+from firebird.driver import Isolation
+from firebird.driver import TPB
+from firebird.driver import TraAccessMode
+
+
+# Firebird applies isolation, read-only access and (FB) auto-commit per
+# transaction via the Transaction Parameter Buffer (TPB); there is no
+# per-connection "SET TRANSACTION ISOLATION". Map SQLAlchemy's isolation
+# level names to the firebird-driver Isolation members.
+FB_ISOLATION_LEVEL = {
+    "READ COMMITTED": Isolation.READ_COMMITTED_RECORD_VERSION,
+    "REPEATABLE READ": Isolation.SNAPSHOT,
+    "SERIALIZABLE": Isolation.SERIALIZABLE,
+}
+
+# Firebird's practical default for an ORM workload (also SQLAlchemy's
+# conventional default across backends).
+FB_DEFAULT_ISOLATION_LEVEL = "READ COMMITTED"
+
+
+class FBReadOnlyConnectionCharacteristic(
+    characteristics.ConnectionCharacteristic
+):
+    """Expose Firebird read-only transactions via the ``firebird_readonly``
+    execution option, mirroring PostgreSQL's ``postgresql_readonly``."""
+
+    transactional = True
+
+    def reset_characteristic(self, dialect, dbapi_conn):
+        dialect.set_readonly(dbapi_conn, False)
+
+    def set_characteristic(self, dialect, dbapi_conn, value):
+        dialect.set_readonly(dbapi_conn, value)
+
+    def get_characteristic(self, dialect, dbapi_conn):
+        return dialect.get_readonly(dbapi_conn)
 
 
 class FBDialect_firebird(FBDialect):
     driver = "firebird"
     supports_statement_cache = True
 
+    connection_characteristics = FBDialect.connection_characteristics.union(
+        {"firebird_readonly": FBReadOnlyConnectionCharacteristic()}
+    )
+
     @classmethod
     def import_dbapi(cls):
         return firebird.driver
 
-    @util.memoized_property
-    def _isolation_lookup(self):
-        return {
-            "AUTOCOMMIT": "autocommit",
-            "READ COMMITTED": "read_committed",
-            "REPEATABLE READ": "repeatable_read",
-            "SERIALIZABLE": "serializable",
-        }
+    # -- Transaction options: isolation level, AUTOCOMMIT and read-only ----
+    #
+    # Firebird has no per-connection isolation switch: isolation, read-only
+    # access and (FB) auto-commit are all properties of the TPB used to start
+    # a transaction. We track the requested options on the DBAPI connection
+    # and keep its main transaction's ``default_tpb`` in sync, so the next
+    # transaction the driver starts uses them. The requested options are also
+    # stored on the connection so ``get_isolation_level`` / ``get_readonly``
+    # can report them back.
+
+    def on_connect(self):
+        def connect(dbapi_connection):
+            dbapi_connection._sa_isolation_level = FB_DEFAULT_ISOLATION_LEVEL
+            dbapi_connection._sa_readonly = False
+            self._apply_transaction_options(dbapi_connection)
+
+        return connect
+
+    def _apply_transaction_options(self, dbapi_connection):
+        level = getattr(
+            dbapi_connection,
+            "_sa_isolation_level",
+            FB_DEFAULT_ISOLATION_LEVEL,
+        )
+        readonly = getattr(dbapi_connection, "_sa_readonly", False)
+
+        # AUTOCOMMIT is the TPB auto-commit flag layered on a base isolation;
+        # the server commits the work of each statement automatically.
+        auto_commit = level == "AUTOCOMMIT"
+        isolation = FB_ISOLATION_LEVEL[
+            FB_DEFAULT_ISOLATION_LEVEL if auto_commit else level
+        ]
+        access_mode = TraAccessMode.READ if readonly else TraAccessMode.WRITE
+
+        default_tpb = TPB(
+            isolation=isolation,
+            access_mode=access_mode,
+            auto_commit=auto_commit,
+        ).get_buffer()
+
+        # ``default_tpb`` governs the next transaction the driver starts.
+        # SQLAlchemy applies these options before any transaction begins (on
+        # connect, and while resetting/changing execution options), so the new
+        # options take effect from the next statement onward.
+        dbapi_connection.main_transaction.default_tpb = default_tpb
 
     def get_isolation_level_values(self, dbapi_connection):
-        return list(self._isolation_lookup)
+        return list(FB_ISOLATION_LEVEL) + ["AUTOCOMMIT"]
+
+    def get_default_isolation_level(self, dbapi_connection):
+        return FB_DEFAULT_ISOLATION_LEVEL
+
+    def get_isolation_level(self, dbapi_connection):
+        return getattr(
+            dbapi_connection,
+            "_sa_isolation_level",
+            FB_DEFAULT_ISOLATION_LEVEL,
+        )
 
     def set_isolation_level(self, dbapi_connection, level):
-        dbapi_connection.set_isolation_level(self._isolation_lookup[level])
+        dbapi_connection._sa_isolation_level = level
+        self._apply_transaction_options(dbapi_connection)
+
+    def reset_isolation_level(self, dbapi_connection):
+        # Restore the engine-level isolation_level if one was configured,
+        # else the dialect default. The base implementation asserts that any
+        # engine-level value is the default or AUTOCOMMIT; Firebird supports
+        # restoring an arbitrary configured level across pooled connections
+        # (independent_readonly_connections), so we relax that assertion.
+        level = (
+            self._on_connect_isolation_level
+            if self._on_connect_isolation_level is not None
+            else self.default_isolation_level
+        )
+        self._assert_and_set_isolation_level(dbapi_connection, level)
+
+    def get_readonly(self, dbapi_connection):
+        return getattr(dbapi_connection, "_sa_readonly", False)
+
+    def set_readonly(self, dbapi_connection, value):
+        dbapi_connection._sa_readonly = value
+        self._apply_transaction_options(dbapi_connection)
 
     def create_connect_args(self, url):
         opts = url.translate_connect_args(username="user")

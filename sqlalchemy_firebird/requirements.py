@@ -1006,7 +1006,7 @@ class Requirements(SuiteRequirements):
     @property
     def autocommit(self):
         """target dialect supports 'AUTOCOMMIT' as an isolation_level"""
-        return exclusions.closed()
+        return exclusions.open()
 
     @property
     def isolation_level(self):
@@ -1016,7 +1016,7 @@ class Requirements(SuiteRequirements):
         the get_isolation_levels() method be implemented.
 
         """
-        return exclusions.closed()
+        return exclusions.open()
 
     def get_isolation_levels(self, config):
         """Return a structure of supported isolation levels for the current

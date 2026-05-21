@@ -4,6 +4,7 @@ from sqlalchemy import bindparam
 from sqlalchemy import cast
 from sqlalchemy import Column
 from sqlalchemy import create_engine
+from sqlalchemy import exc
 from sqlalchemy import DateTime
 from sqlalchemy import extract
 from sqlalchemy import func
@@ -21,7 +22,9 @@ from sqlalchemy.testing import engines
 from sqlalchemy.testing import fixtures
 from sqlalchemy.testing.assertions import AssertsCompiledSQL
 from sqlalchemy.testing.assertions import AssertsExecutionResults
+from sqlalchemy.testing.assertions import assert_raises
 from sqlalchemy.testing.assertions import eq_
+from sqlalchemy.testing.assertions import is_true
 from sqlalchemy.engine.url import make_url
 from firebird.driver import driver_config
 from sqlalchemy_firebird.firebird import FBDialect_firebird
@@ -408,3 +411,76 @@ class DialectNameTest(fixtures.TestBase):
         eng = create_engine("firebird+firebird://sysdba@/path/to/db.fdb")
         eq_(eng.dialect.name, "firebird")
         eq_(eng.name, "firebird")
+
+
+class TransactionOptionsTest(fixtures.TablesTest):
+    """Behavioral coverage for the TPB-based isolation / read-only support
+    (proves the options are actually applied by Firebird, beyond being
+    reported back by get_isolation_level / get_readonly)."""
+
+    __backend__ = True
+    run_deletes = "each"
+
+    @classmethod
+    def define_tables(cls, metadata):
+        Table(
+            "tx_opt",
+            metadata,
+            Column("id", Integer, primary_key=True, autoincrement=False),
+            Column("data", String(50)),
+        )
+
+    def test_readonly_blocks_writes_and_reports_state(self):
+        t = self.tables.tx_opt
+        with config.db.begin() as conn:
+            conn.execute(t.insert(), {"id": 1, "data": "x"})
+
+        with config.db.connect() as conn:
+            ro = conn.execution_options(firebird_readonly=True)
+            is_true(ro.dialect.get_readonly(ro.connection.dbapi_connection))
+
+            # Reads succeed inside a read-only transaction...
+            eq_(ro.scalar(select(t.c.data).where(t.c.id == 1)), "x")
+
+            # ...but Firebird rejects writes.
+            assert_raises(
+                exc.DBAPIError,
+                ro.execute,
+                t.insert(),
+                {"id": 2, "data": "y"},
+            )
+            ro.rollback()
+
+        # The rejected write must not have landed.
+        with config.db.connect() as conn:
+            eq_(conn.scalar(select(func.count()).select_from(t)), 1)
+
+    def test_snapshot_vs_read_committed_visibility(self):
+        # REPEATABLE READ maps to Firebird SNAPSHOT (a stable view), while
+        # READ COMMITTED sees other transactions' commits on each statement.
+        t = self.tables.tx_opt
+        with config.db.begin() as conn:
+            conn.execute(t.insert(), {"id": 1, "data": "a"})
+
+        snapshot = config.db.connect().execution_options(
+            isolation_level="REPEATABLE READ"
+        )
+        read_committed = config.db.connect().execution_options(
+            isolation_level="READ COMMITTED"
+        )
+        try:
+            count = select(func.count()).select_from(t)
+            # Both transactions start and see the single seeded row.
+            eq_(snapshot.scalar(count), 1)
+            eq_(read_committed.scalar(count), 1)
+
+            # A separate connection commits a new row.
+            with config.db.begin() as writer:
+                writer.execute(t.insert(), {"id": 2, "data": "b"})
+
+            # SNAPSHOT keeps its stable view; READ COMMITTED sees the commit.
+            eq_(snapshot.scalar(count), 1)
+            eq_(read_committed.scalar(count), 2)
+        finally:
+            snapshot.close()
+            read_committed.close()
