@@ -57,6 +57,61 @@ class ConnectionTest(fixtures.TablesTest):
             eq_(testing.db.dialect.is_disconnect(err.orig, None, None), True)
 
 
+class PingTest(fixtures.TestBase):
+    """do_ping uses firebird-driver's native Connection.ping() for
+    pool_pre_ping, instead of compiling/executing SELECT 1 (F2)."""
+
+    __backend__ = True
+
+    def test_do_ping_uses_native_ping(self):
+        # do_ping must delegate to the driver's native ping() and must not
+        # start a transaction (the SQL fallback "SELECT 1 FROM rdb$database"
+        # would). Spy on the real ping() rather than mocking its behavior.
+        with testing.db.connect() as conn:
+            dbapi_conn = conn.connection.dbapi_connection
+            original_ping = dbapi_conn.ping
+            calls = []
+
+            def spy():
+                calls.append(True)
+                return original_ping()
+
+            dbapi_conn.ping = spy
+            try:
+                is_true(testing.db.dialect.do_ping(dbapi_conn))
+                eq_(len(calls), 1)
+                # Native ping pings the attachment without opening a
+                # transaction, unlike the SELECT-based default.
+                eq_(dbapi_conn.is_active(), False)
+            finally:
+                del dbapi_conn.ping
+
+    def test_pool_pre_ping_recovers_killed_connection(self):
+        # End-to-end: a connection dropped server-side is detected by the
+        # native ping (DatabaseError -> is_disconnect) and transparently
+        # replaced when pool_pre_ping is on.
+        eng = engines.testing_engine(options={"pool_pre_ping": True})
+        try:
+            with eng.connect() as conn:
+                con_id = conn.exec_driver_sql(
+                    "SELECT CURRENT_CONNECTION FROM rdb$database"
+                ).scalar()
+
+            with testing.db.begin() as killer:
+                killer.exec_driver_sql(
+                    "DELETE FROM mon$attachments WHERE mon$attachment_id = ?",
+                    (con_id,),
+                )
+
+            with eng.connect() as conn:
+                new_id = conn.exec_driver_sql(
+                    "SELECT CURRENT_CONNECTION FROM rdb$database"
+                ).scalar()
+                assert new_id != con_id
+        finally:
+            eng.dispose()
+
+
 #
 # Tests from postgresql/test_dialect.py
 #

@@ -291,6 +291,16 @@ class FBDialect_firebird(FBDialect):
         opts.update(qry)
         return ([], opts)
 
+    def do_ping(self, dbapi_connection):
+        # firebird-driver's Connection exposes a native ping() that round-trips
+        # a lightweight request to the server. Use it for pool_pre_ping instead
+        # of the base class default (compile + execute "SELECT 1 FROM
+        # rdb$database"): it is cheaper and does not start a transaction. On a
+        # dead connection ping() raises a DatabaseError, which the base
+        # _do_ping_w_event() catches and routes through is_disconnect().
+        dbapi_connection.ping()
+        return True
+
     def do_rollback(self, dbapi_connection):
         if dbapi_connection.is_active():
             dbapi_connection.rollback()
