@@ -29,6 +29,7 @@ from sqlalchemy.types import TypeEngine
 
 import sqlalchemy_firebird.types as FbTypes
 
+from sqlalchemy_firebird import insert as fb_insert
 from sqlalchemy_firebird.firebird import FBDialect_firebird
 
 
@@ -187,6 +188,77 @@ class CompileTest(fixtures.TablesTest, AssertsCompiledSQL):
             "(SELECT src.id AS id, src.data AS data FROM src "
             "WHERE src.id > CAST(:id_1 AS INTEGER)) "
             "SELECT c.id, c.data FROM c",
+        )
+
+    def _uoi_table(self):
+        return Table(
+            "t",
+            MetaData(),
+            Column("id", Integer, primary_key=True),
+            Column("data", String(50)),
+        )
+
+    def test_update_or_insert_matching(self):
+        t = self._uoi_table()
+        self.assert_compile(
+            fb_insert(t).values(id=1, data="x").matching(t.c.id),
+            "UPDATE OR INSERT INTO t (id, data) VALUES "
+            "(CAST(:id AS INTEGER), CAST(:data AS VARCHAR(50))) "
+            "MATCHING (id)",
+        )
+
+    def test_update_or_insert_matching_pk_default(self):
+        # matching() with no columns -> UPDATE OR INSERT, no MATCHING clause
+        # (Firebird matches on the primary key).
+        t = self._uoi_table()
+        self.assert_compile(
+            fb_insert(t).values(id=1, data="x").matching(),
+            "UPDATE OR INSERT INTO t (id, data) VALUES "
+            "(CAST(:id AS INTEGER), CAST(:data AS VARCHAR(50)))",
+        )
+
+    def test_update_or_insert_multi_and_string_columns(self):
+        t = self._uoi_table()
+        self.assert_compile(
+            fb_insert(t).values(id=1, data="x").matching(t.c.id, "data"),
+            "UPDATE OR INSERT INTO t (id, data) VALUES "
+            "(CAST(:id AS INTEGER), CAST(:data AS VARCHAR(50))) "
+            "MATCHING (id, data)",
+        )
+
+    def test_update_or_insert_returning(self):
+        t = self._uoi_table()
+        self.assert_compile(
+            fb_insert(t)
+            .values(id=1, data="x")
+            .matching(t.c.id)
+            .returning(t.c.id, t.c.data),
+            "UPDATE OR INSERT INTO t (id, data) VALUES "
+            "(CAST(:id AS INTEGER), CAST(:data AS VARCHAR(50))) "
+            "MATCHING (id) RETURNING t.id, t.data",
+        )
+
+    def test_update_or_insert_rejects_from_select(self):
+        # UPDATE OR INSERT only accepts a VALUES row, never INSERT...SELECT.
+        t = self._uoi_table()
+        src = Table("src", t.metadata, Column("id", Integer))
+        stmt = (
+            fb_insert(t).from_select(["id"], select(src.c.id)).matching(t.c.id)
+        )
+        assert_raises_message(
+            exc.CompileError,
+            "does not support",
+            stmt.compile,
+            dialect=self.__dialect__,
+        )
+
+    def test_plain_insert_unaffected(self):
+        # The standard INSERT path is untouched by the upsert override.
+        t = self._uoi_table()
+        self.assert_compile(
+            fb_insert(t).values(id=1, data="x"),
+            "INSERT INTO t (id, data) VALUES "
+            "(CAST(:id AS INTEGER), CAST(:data AS VARCHAR(50)))",
         )
 
     #

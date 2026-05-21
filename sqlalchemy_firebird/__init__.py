@@ -36,6 +36,10 @@ from .types import (
     FBVARCHAR,
 )
 
+# Firebird-specific DML: insert(...).matching(...) -> UPDATE OR INSERT. Only
+# pulls in sqlalchemy.sql (no firebird-driver), so the import stays driver-free.
+from .dml import insert, Insert
+
 # Convenient un-prefixed aliases for the Firebird-only SQL types that have no
 # generic SQLAlchemy spelling.
 INT128 = FBINT128
@@ -68,4 +72,6 @@ __all__ = (
     "FBVARCHAR",
     "INT128",
     "DECFLOAT",
+    "insert",
+    "Insert",
 )

@@ -478,6 +478,18 @@ class PublicExportsTest(fixtures.TestBase):
         eq_(sfb.INT128, fb_types.FBINT128)
         eq_(sfb.DECFLOAT, fb_types.FBDECFLOAT)
 
+    def test_insert_construct_exported(self):
+        # The Firebird UPDATE OR INSERT construct is part of the public API
+        # (F1): ``from sqlalchemy_firebird import insert``.
+        sfb = sqlalchemy_firebird_pkg
+        from sqlalchemy_firebird.dml import Insert as _Insert
+
+        is_true("insert" in sfb.__all__)
+        is_true("Insert" in sfb.__all__)
+        is_true(sfb.Insert is _Insert)
+        t = Table("uoi_export", MetaData(), Column("id", Integer))
+        is_true(isinstance(sfb.insert(t), _Insert))
+
     def test_all_covers_public_types(self):
         sfb = sqlalchemy_firebird_pkg
         # Everything advertised in __all__ must be importable.

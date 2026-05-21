@@ -27,6 +27,7 @@ from sqlalchemy.testing import expect_warnings
 from sqlalchemy.testing import fixtures
 from sqlalchemy.testing import requires
 
+from sqlalchemy_firebird import insert as fb_insert
 from sqlalchemy_firebird.types import _FBInterval
 
 
@@ -158,6 +159,66 @@ class CompoundSelectOrderByTest(fixtures.TablesTest):
             u.order_by(u.selected_columns.y, u.selected_columns.id.desc())
         ).fetchall()
         eq_(rows, [(4, 4, 7), (3, 3, 7), (2, 2, 9), (1, 1, 9)])
+
+
+class UpdateOrInsertTest(fixtures.TablesTest):
+    """Real-DB coverage for the Firebird UPDATE OR INSERT upsert (F1)."""
+
+    __backend__ = True
+    run_deletes = "each"
+
+    @classmethod
+    def define_tables(cls, metadata):
+        Table(
+            "uoi",
+            metadata,
+            Column("id", Integer, primary_key=True, autoincrement=False),
+            Column("data", String(50)),
+        )
+
+    def _all(self, connection):
+        t = self.tables.uoi
+        return connection.execute(select(t).order_by(t.c.id)).fetchall()
+
+    def test_insert_then_update(self, connection):
+        t = self.tables.uoi
+        connection.execute(
+            fb_insert(t).values(id=1, data="a").matching(t.c.id)
+        )
+        # Same MATCHING key -> updates the existing row rather than inserting.
+        connection.execute(
+            fb_insert(t).values(id=1, data="b").matching(t.c.id)
+        )
+        eq_(self._all(connection), [(1, "b")])
+
+    def test_matching_defaults_to_primary_key(self, connection):
+        t = self.tables.uoi
+        connection.execute(fb_insert(t).values(id=1, data="a").matching())
+        connection.execute(fb_insert(t).values(id=1, data="b").matching())
+        eq_(self._all(connection), [(1, "b")])
+
+    def test_returning(self, connection):
+        t = self.tables.uoi
+        r = connection.execute(
+            fb_insert(t)
+            .values(id=5, data="x")
+            .matching(t.c.id)
+            .returning(t.c.id, t.c.data)
+        )
+        eq_(r.fetchall(), [(5, "x")])
+
+    def test_executemany(self, connection):
+        t = self.tables.uoi
+        connection.execute(
+            fb_insert(t).values(id=1, data="a").matching(t.c.id)
+        )
+        # Each parameter set is its own UPDATE OR INSERT: id=1 updates, id=2
+        # inserts.
+        connection.execute(
+            fb_insert(t).matching(t.c.id),
+            [{"id": 1, "data": "A"}, {"id": 2, "data": "B"}],
+        )
+        eq_(self._all(connection), [(1, "A"), (2, "B")])
 
 
 #

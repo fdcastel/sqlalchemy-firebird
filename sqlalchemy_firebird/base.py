@@ -21,6 +21,7 @@ from sqlalchemy.sql import roles
 from sqlalchemy.sql import visitors
 
 import sqlalchemy_firebird.types as fb_types
+from sqlalchemy_firebird import dml
 
 
 # Expression separator for COMPUTER BY expressions
@@ -250,6 +251,36 @@ class FBCompiler(sql.compiler.SQLCompiler):
 
     def returning_clause(self, stmt, returning_cols, **kw):
         return super().returning_clause(stmt, returning_cols, **kw)
+
+    def visit_insert(self, insert_stmt, **kw):
+        # The Firebird upsert (sqlalchemy_firebird.insert().matching(...)) is a
+        # normal INSERT carrying an UpdateOrInsertMatch as its
+        # _post_values_clause. The base renders
+        # "INSERT INTO t (..) VALUES (..) [MATCHING (..)] [RETURNING ..]"; we
+        # only need to turn the leading "INSERT" into "UPDATE OR INSERT".
+        text = super().visit_insert(insert_stmt, **kw)
+        if isinstance(
+            insert_stmt._post_values_clause, dml.UpdateOrInsertMatch
+        ):
+            if insert_stmt.select is not None:
+                raise exc.CompileError(
+                    "Firebird UPDATE OR INSERT does not support "
+                    "INSERT ... FROM SELECT; use a VALUES row."
+                )
+            text = "UPDATE OR " + text
+        return text
+
+    def visit_fb_update_or_insert_match(self, clause, **kw):
+        if not clause.matching_elements:
+            return ""
+        return "MATCHING (%s)" % ", ".join(
+            (
+                self.preparer.quote(c)
+                if isinstance(c, str)
+                else self.process(c, include_table=False, use_schema=False)
+            )
+            for c in clause.matching_elements
+        )
 
 
 class FBDDLCompiler(sql.compiler.DDLCompiler):
