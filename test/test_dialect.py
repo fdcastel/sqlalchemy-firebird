@@ -580,6 +580,43 @@ class CapabilityFlagsTest(fixtures.TestBase):
             is_true(getattr(d, name), name)
 
 
+class SessionStatementsTest(fixtures.TestBase):
+    """Engine-level session_statements run FB4+ SET commands on connect (J6)."""
+
+    __backend__ = True
+
+    def test_stored_on_dialect(self):
+        eq_(
+            FBDialect_firebird(
+                session_statements="SET TIME ZONE 'UTC'"
+            )._session_statements,
+            ["SET TIME ZONE 'UTC'"],
+        )
+        eq_(
+            FBDialect_firebird(
+                session_statements=["A", "B"]
+            )._session_statements,
+            ["A", "B"],
+        )
+        eq_(FBDialect_firebird()._session_statements, [])
+
+    @testing.requires.firebird_4_or_higher
+    def test_session_statements_applied(self):
+        eng = create_engine(
+            config.db.url,
+            session_statements=["SET STATEMENT TIMEOUT 7 SECOND"],
+        )
+        try:
+            with eng.connect() as conn:
+                val = conn.exec_driver_sql(
+                    "SELECT RDB$GET_CONTEXT('SYSTEM', 'STATEMENT_TIMEOUT') "
+                    "FROM rdb$database"
+                ).scalar()
+                eq_(val, "7000")
+        finally:
+            eng.dispose()
+
+
 class ReservedWordsTest(fixtures.TestBase):
     """On Firebird 5.0+ the preparer's reserved words come from the live
     RDB$KEYWORDS table; older servers use the bundled fb_info30/40 sets (J5)."""

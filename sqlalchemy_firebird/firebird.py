@@ -83,6 +83,23 @@ option::
 
     ro = conn.execution_options(firebird_readonly=True)
 
+Session options (Firebird 4.0+)
+-------------------------------
+
+``session_statements`` runs one or more Firebird ``SET`` statements once on
+every new connection -- a convenience over a hand-written ``connect`` event,
+gated to Firebird 4.0+ (skipped with a warning on Firebird 3.0)::
+
+    engine = create_engine(url, session_statements=[
+        "SET STATEMENT TIMEOUT 5 SECOND",
+        "SET SESSION IDLE TIMEOUT 10 MINUTE",
+        "SET TIME ZONE 'UTC'",
+        "SET BIND OF DECFLOAT TO DOUBLE PRECISION",
+    ])
+
+(The session time zone is also accepted as the ``session_time_zone`` connection
+parameter handled natively by ``firebird-driver``.)
+
 Reflection extras
 -----------------
 
@@ -112,6 +129,7 @@ import sys
 from datetime import datetime
 from datetime import time
 from math import modf
+from sqlalchemy import util
 from sqlalchemy.engine import characteristics
 from .base import FBDialect
 
@@ -164,6 +182,20 @@ class FBDialect_firebird(FBDialect):
         {"firebird_readonly": FBReadOnlyConnectionCharacteristic()}
     )
 
+    def __init__(self, session_statements=None, **kwargs):
+        """:param session_statements: a Firebird ``SET`` statement (or a list
+        of them) run once on every new connection, e.g.
+        ``"SET STATEMENT TIMEOUT 5 SECOND"``,
+        ``"SET SESSION IDLE TIMEOUT 10 MINUTE"``, ``"SET TIME ZONE 'UTC'"`` or
+        ``"SET BIND OF DECFLOAT TO DOUBLE PRECISION"``. These session controls
+        are Firebird 4.0+ only and are skipped (with a warning) on Firebird
+        3.0. Pass via ``create_engine(url, session_statements=[...])``.
+        """
+        super().__init__(**kwargs)
+        if isinstance(session_statements, str):
+            session_statements = [session_statements]
+        self._session_statements = list(session_statements or ())
+
     @classmethod
     def import_dbapi(cls):
         return firebird.driver
@@ -183,8 +215,29 @@ class FBDialect_firebird(FBDialect):
             dbapi_connection._sa_isolation_level = FB_DEFAULT_ISOLATION_LEVEL
             dbapi_connection._sa_readonly = False
             self._apply_transaction_options(dbapi_connection)
+            self._apply_session_statements(dbapi_connection)
 
         return connect
+
+    def _apply_session_statements(self, dbapi_connection):
+        # Run the engine-configured SET statements (statement/idle timeout,
+        # time zone, bind, ...) once per connection. These are Firebird 4.0+
+        # only; gate on the connection's own engine version, since
+        # server_version_info is not populated yet for the first connect.
+        if not self._session_statements:
+            return
+        if int(dbapi_connection.info.engine_version) < 4:
+            util.warn(
+                "firebird session_statements require Firebird 4.0 or higher; "
+                "skipped on this server."
+            )
+            return
+        cursor = dbapi_connection.cursor()
+        try:
+            for statement in self._session_statements:
+                cursor.execute(statement)
+        finally:
+            cursor.close()
 
     def _apply_transaction_options(self, dbapi_connection):
         level = getattr(
