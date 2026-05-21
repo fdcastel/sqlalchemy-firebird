@@ -89,6 +89,18 @@ specific reflection reachable via ``inspect(engine)``:
   (:class:`~sqlalchemy_firebird.base.ReflectedDomain`).
 * ``get_sequences()`` -- sequences with their start value and increment
   (:class:`~sqlalchemy_firebird.base.ReflectedSequence`).
+
+Limitations
+-----------
+
+* **Regular expressions** -- ``Column.regexp_match()`` /
+  ``regexp_replace()`` are not supported and raise ``CompileError``.
+  Firebird's only regex predicate is ``SIMILAR TO``, which matches the whole
+  string with LIKE-style ``%`` / ``_`` wildcards (a ``.`` is a literal dot,
+  ``^`` is invalid). Those semantics are incompatible with SQLAlchemy's
+  POSIX-flavored ``regexp_match``, so mapping them would silently return
+  wrong results; use ``SIMILAR TO`` explicitly via :func:`~sqlalchemy.text`
+  when you need it. There is no ``regexp_replace`` function in Firebird.
 """  # noqa
 
 import sys

@@ -1714,11 +1714,22 @@ class Requirements(SuiteRequirements):
     @property
     def regexp_match(self):
         """backend supports the regexp_match operator."""
+        # Deliberately closed. SQLAlchemy's regexp_match is POSIX-flavored
+        # (unanchored partial match, "." = any char, "^"/"$" anchors,
+        # alternation). Firebird's only regex predicate, SIMILAR TO, matches
+        # the *whole* string and uses LIKE-style "%"/"_" wildcards -- there a
+        # "." is a literal dot and a leading "^" is an "Invalid SIMILAR TO
+        # pattern" error. Mapping regexp_match to SIMILAR TO would silently
+        # return wrong results, so we keep the base compiler's clear
+        # CompileError instead.
         return exclusions.closed()
 
     @property
     def regexp_replace(self):
         """backend supports the regexp_replace operator."""
+        # Firebird has no regexp_replace function at all (SIMILAR TO is a
+        # predicate only), so there is nothing to map it to. See regexp_match
+        # for the SIMILAR TO semantics mismatch.
         return exclusions.closed()
 
     @property

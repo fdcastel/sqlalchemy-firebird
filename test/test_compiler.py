@@ -261,6 +261,26 @@ class CompileTest(fixtures.TablesTest, AssertsCompiledSQL):
             "(CAST(:id AS INTEGER), CAST(:data AS VARCHAR(50)))",
         )
 
+    def test_regexp_operators_not_supported(self):
+        # Firebird's only regex predicate (SIMILAR TO) is whole-string
+        # anchored with LIKE-style wildcards, semantically incompatible with
+        # SQLAlchemy's POSIX regexp_match, and there is no regexp_replace.
+        # Both must raise a clear CompileError rather than silently mapping to
+        # wrong SQL (F3 -- deliberately left unsupported).
+        t = self._uoi_table()
+        assert_raises_message(
+            exc.CompileError,
+            "does not support regular expressions",
+            t.c.data.regexp_match("a.c").compile,
+            dialect=self.__dialect__,
+        )
+        assert_raises_message(
+            exc.CompileError,
+            "does not support regular expression replacements",
+            t.c.data.regexp_replace("a.c", "Z").compile,
+            dialect=self.__dialect__,
+        )
+
     #
     # Tests from postgresql/test_compiler.py
     #
