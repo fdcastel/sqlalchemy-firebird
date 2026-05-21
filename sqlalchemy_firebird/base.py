@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any, List, TypedDict
 from typing import Optional
 
+from sqlalchemy import bindparam
 from sqlalchemy import exc
 from sqlalchemy import schema as sa_schema
 from sqlalchemy import sql
@@ -776,12 +777,123 @@ class FBDialect(default.DefaultDialect):
 
         raise exc.NoSuchTableError(view_name)
 
-    @reflection.cache
-    def get_columns(  # noqa: C901
-        self, connection, table_name, schema=None, **kw
+    # ------------------------------------------------------------------ #
+    # Reflection
+    #
+    # The single-table ``get_*`` methods below are thin wrappers around the
+    # SQLAlchemy 2.0 batched ``get_multi_*`` family. Driving every reflection
+    # query from ``rdb$relations`` (rather than one query per table) lets
+    # ``MetaData.reflect()`` and Alembic autogenerate reflect a whole schema
+    # in a handful of queries, mirroring the in-tree PostgreSQL dialect.
+    # ------------------------------------------------------------------ #
+
+    def _value_or_raise(self, data, table_name, schema):
+        try:
+            return dict(data)[(schema, table_name)]
+        except KeyError:
+            raise exc.NoSuchTableError(
+                f"{schema}.{table_name}" if schema else table_name
+            ) from None
+
+    def _relation_type_condition(self, kind, scope):
+        # Map SQLAlchemy's ObjectKind / ObjectScope onto Firebird's
+        # rdb$relation_type values. ``ANY``/``ANY`` (used by the single-table
+        # wrappers) imposes no type restriction, preserving the historical
+        # behaviour of reflecting any relation referenced by name.
+        if (
+            kind is reflection.ObjectKind.ANY
+            and scope is reflection.ObjectScope.ANY
+        ):
+            return None
+
+        types = []
+        if reflection.ObjectKind.TABLE in kind:
+            if reflection.ObjectScope.DEFAULT in scope:
+                types.append("0")  # persistent table
+            if reflection.ObjectScope.TEMPORARY in scope:
+                types.extend(["4", "5"])  # global temporary tables
+        if (
+            reflection.ObjectKind.VIEW in kind
+            and reflection.ObjectScope.DEFAULT in scope
+        ):
+            types.append("1")  # view
+        # Firebird has no materialized views.
+
+        if not types:
+            return "1 = 0"
+        return "r.rdb$relation_type IN (%s)" % ", ".join(types)
+
+    def _relation_filter(self, kind, scope, filter_names):
+        # Build the WHERE fragment (on the rdb$relations alias ``r``) shared by
+        # every batched reflection query, along with its bind parameters and a
+        # map from the on-disk (denormalized) relation name back to the name
+        # the caller asked for.
+        conditions = ["COALESCE(r.rdb$system_flag, 0) = 0"]
+        type_condition = self._relation_type_condition(kind, scope)
+        if type_condition is not None:
+            conditions.append(type_condition)
+
+        params = {}
+        name_map = None
+        has_filter_names = bool(filter_names)
+        if has_filter_names:
+            name_map = {self.denormalize_name(n): n for n in filter_names}
+            conditions.append("r.rdb$relation_name IN :relation_names")
+            params["relation_names"] = list(name_map)
+
+        return " AND ".join(conditions), params, has_filter_names, name_map
+
+    def _relation_key(self, schema, relation_name, name_map):
+        # Mirror SQLAlchemy's default multi-reflection: when explicit names
+        # were requested, key results by the *input* name (so the caller can
+        # look them up unchanged); otherwise key by the normalized relation
+        # name, matching what get_table_names() / get_view_names() return.
+        if name_map is not None:
+            mapped = name_map.get(relation_name)
+            if mapped is not None:
+                return (schema, mapped)
+        return (schema, self.normalize_name(relation_name))
+
+    def _exec_reflection_query(
+        self, connection, query, params, has_filter_names
     ):
+        # Reflection queries go through connection.execute(text()) rather than
+        # exec_driver_sql so the test-suite DDL-autocommit listener in
+        # provision.py can make freshly created objects visible. See that
+        # module for the rationale.
+        stmt = text(query)
+        if has_filter_names:
+            stmt = stmt.bindparams(bindparam("relation_names", expanding=True))
+        return connection.execute(stmt, params)
+
+    @reflection.cache
+    def get_columns(self, connection, table_name, schema=None, **kw):
+        data = self.get_multi_columns(
+            connection,
+            schema=schema,
+            filter_names=[table_name],
+            scope=reflection.ObjectScope.ANY,
+            kind=reflection.ObjectKind.ANY,
+            **kw,
+        )
+        return self._value_or_raise(data, table_name, schema)
+
+    def get_multi_columns(  # noqa: C901
+        self,
+        connection,
+        *,
+        schema=None,
+        filter_names=None,
+        scope=reflection.ObjectScope.DEFAULT,
+        kind=reflection.ObjectKind.TABLE,
+        **kw,
+    ):
+        relation_filter, params, has_filter_names, name_map = (
+            self._relation_filter(kind, scope, filter_names)
+        )
         columns_query = """
-            SELECT TRIM(rf.rdb$field_name) AS field_name,
+            SELECT TRIM(r.rdb$relation_name) AS relation_name,
+                   TRIM(rf.rdb$field_name) AS field_name,
                    COALESCE(rf.rdb$null_flag, f.rdb$null_flag) AS null_flag,
                    TRIM(t.rdb$type_name) AS field_type,
                    f.rdb$field_length / COALESCE(cs.rdb$bytes_per_character, 1) AS field_length,
@@ -797,7 +909,9 @@ class FBDialect(default.DefaultDialect):
                    rf.rdb$identity_type AS identity_type,
                    g.rdb$initial_value AS initial_value,
                    g.rdb$generator_increment AS generator_increment
-            FROM rdb$relation_fields rf
+            FROM rdb$relations r
+                 JOIN rdb$relation_fields rf
+                   ON rf.rdb$relation_name = r.rdb$relation_name
                  JOIN rdb$fields f
                    ON f.rdb$field_name = rf.rdb$field_source
                  JOIN rdb$types t
@@ -811,15 +925,18 @@ class FBDialect(default.DefaultDialect):
                  LEFT JOIN rdb$generators g
                         ON g.rdb$generator_name = rf.rdb$generator_name
             WHERE COALESCE(f.rdb$system_flag, 0) = 0
-              AND rf.rdb$relation_name = ?
-            ORDER BY rf.rdb$field_position
-        """
+              AND {relation_filter}
+            ORDER BY r.rdb$relation_name, rf.rdb$field_position
+        """.format(relation_filter=relation_filter)
 
-        tablename = self.denormalize_name(table_name)
-        c = list(connection.exec_driver_sql(columns_query, (tablename,)))
+        c = self._exec_reflection_query(
+            connection, columns_query, params, has_filter_names
+        )
 
-        cols = []
+        columns = util.defaultdict(list)
         for row in c:
+            key = self._relation_key(schema, row.relation_name, name_map)
+            cols = columns[key]
             orig_colname = row.field_name
             colname = self.normalize_name(orig_colname)
 
@@ -926,88 +1043,149 @@ class FBDialect(default.DefaultDialect):
 
             cols.append(col_d)
 
-        if cols:
-            return cols
-
-        if not self.has_table(connection, table_name, schema):
-            raise exc.NoSuchTableError(table_name)
-
-        return reflection.ReflectionDefaults.columns()
+        return columns.items()
 
     @reflection.cache
     def get_pk_constraint(self, connection, table_name, schema=None, **kw):
-        pk_query = """
-            SELECT TRIM(rc.rdb$constraint_name) AS cname, TRIM(se.rdb$field_name) AS fname
-            FROM rdb$relation_constraints rc
-                 JOIN rdb$index_segments se
-                   ON se.rdb$index_name = rc.rdb$index_name
-            WHERE rc.rdb$constraint_type = 'PRIMARY KEY'
-              AND rc.rdb$relation_name = ?
-            ORDER BY se.rdb$field_position
-        """
-        tablename = self.denormalize_name(table_name)
-        c = connection.exec_driver_sql(pk_query, (tablename,))
-
-        rows = c.fetchall()
-        pkfields = (
-            [self.normalize_name(r.fname) for r in rows] if rows else None
+        data = self.get_multi_pk_constraint(
+            connection,
+            schema=schema,
+            filter_names=[table_name],
+            scope=reflection.ObjectScope.ANY,
+            kind=reflection.ObjectKind.ANY,
+            **kw,
         )
-        if pkfields:
-            return {
-                "constrained_columns": pkfields,
-                "name": self.normalize_name(rows[0].cname) if rows else None,
-            }
+        return self._value_or_raise(data, table_name, schema)
 
-        if not self.has_table(connection, table_name, schema):
-            raise exc.NoSuchTableError(table_name)
+    def get_multi_pk_constraint(
+        self,
+        connection,
+        *,
+        schema=None,
+        filter_names=None,
+        scope=reflection.ObjectScope.DEFAULT,
+        kind=reflection.ObjectKind.TABLE,
+        **kw,
+    ):
+        relation_filter, params, has_filter_names, name_map = (
+            self._relation_filter(kind, scope, filter_names)
+        )
+        pk_query = """
+            SELECT TRIM(r.rdb$relation_name) AS relation_name,
+                   TRIM(rc.rdb$constraint_name) AS cname,
+                   TRIM(se.rdb$field_name) AS fname
+            FROM rdb$relations r
+                 LEFT JOIN rdb$relation_constraints rc
+                        ON rc.rdb$relation_name = r.rdb$relation_name
+                       AND rc.rdb$constraint_type = 'PRIMARY KEY'
+                 LEFT JOIN rdb$index_segments se
+                        ON se.rdb$index_name = rc.rdb$index_name
+            WHERE {relation_filter}
+            ORDER BY r.rdb$relation_name, se.rdb$field_position
+        """.format(relation_filter=relation_filter)
 
-        return reflection.ReflectionDefaults.pk_constraint()
+        c = self._exec_reflection_query(
+            connection, pk_query, params, has_filter_names
+        )
+
+        # Every in-scope relation gets an entry; an empty entry is exactly
+        # ReflectionDefaults.pk_constraint().
+        result = {}
+        for row in c:
+            key = self._relation_key(schema, row.relation_name, name_map)
+            pk = result.setdefault(
+                key, {"constrained_columns": [], "name": None}
+            )
+            if row.cname is not None:
+                pk["name"] = self.normalize_name(row.cname)
+                if row.fname is not None:
+                    pk["constrained_columns"].append(
+                        self.normalize_name(row.fname)
+                    )
+
+        return result.items()
 
     @reflection.cache
     def get_foreign_keys(self, connection, table_name, schema=None, **kw):
+        data = self.get_multi_foreign_keys(
+            connection,
+            schema=schema,
+            filter_names=[table_name],
+            scope=reflection.ObjectScope.ANY,
+            kind=reflection.ObjectKind.ANY,
+            **kw,
+        )
+        return self._value_or_raise(data, table_name, schema)
+
+    def get_multi_foreign_keys(
+        self,
+        connection,
+        *,
+        schema=None,
+        filter_names=None,
+        scope=reflection.ObjectScope.DEFAULT,
+        kind=reflection.ObjectKind.TABLE,
+        **kw,
+    ):
+        relation_filter, params, has_filter_names, name_map = (
+            self._relation_filter(kind, scope, filter_names)
+        )
         fk_query = """
-            SELECT TRIM(rc.rdb$constraint_name) AS cname,
+            SELECT TRIM(r.rdb$relation_name) AS relation_name,
+                   TRIM(rc.rdb$constraint_name) AS cname,
                    TRIM(cse.rdb$field_name) AS fname,
                    TRIM(ix2.rdb$relation_name) AS targetrname,
                    TRIM(se.rdb$field_name) AS targetfname,
                    TRIM(rfc.rdb$update_rule) AS update_rule,
                    TRIM(rfc.rdb$delete_rule) AS delete_rule
-            FROM rdb$relation_constraints rc
-                 JOIN rdb$ref_constraints rfc 
-                   ON rfc.rdb$constraint_name = rc.rdb$constraint_name
-                 JOIN rdb$indices ix1 
-                   ON ix1.rdb$index_name = rc.rdb$index_name
-                 JOIN rdb$indices ix2 
-                   ON ix2.rdb$index_name = ix1.rdb$foreign_key
-                 JOIN rdb$index_segments cse 
-                   ON cse.rdb$index_name = ix1.rdb$index_name
-                 JOIN rdb$index_segments se 
-                   ON se.rdb$index_name = ix2.rdb$index_name
-                  AND se.rdb$field_position = cse.rdb$field_position
-            WHERE rc.rdb$constraint_type = 'FOREIGN KEY'
-              AND rc.rdb$relation_name = ?
-            ORDER BY rc.rdb$constraint_name, se.rdb$field_position
-        """
-        tablename = self.denormalize_name(table_name)
-        c = connection.exec_driver_sql(fk_query, (tablename,))
+            FROM rdb$relations r
+                 LEFT JOIN rdb$relation_constraints rc
+                        ON rc.rdb$relation_name = r.rdb$relation_name
+                       AND rc.rdb$constraint_type = 'FOREIGN KEY'
+                 LEFT JOIN rdb$ref_constraints rfc
+                        ON rfc.rdb$constraint_name = rc.rdb$constraint_name
+                 LEFT JOIN rdb$indices ix1
+                        ON ix1.rdb$index_name = rc.rdb$index_name
+                 LEFT JOIN rdb$indices ix2
+                        ON ix2.rdb$index_name = ix1.rdb$foreign_key
+                 LEFT JOIN rdb$index_segments cse
+                        ON cse.rdb$index_name = ix1.rdb$index_name
+                 LEFT JOIN rdb$index_segments se
+                        ON se.rdb$index_name = ix2.rdb$index_name
+                       AND se.rdb$field_position = cse.rdb$field_position
+            WHERE {relation_filter}
+            ORDER BY r.rdb$relation_name, rc.rdb$constraint_name, se.rdb$field_position
+        """.format(relation_filter=relation_filter)
 
-        fks = util.defaultdict(
-            lambda: {
-                "name": None,
-                "constrained_columns": [],
-                "referred_schema": None,
-                "referred_table": None,
-                "referred_columns": [],
-                "options": {},
-            }
+        c = self._exec_reflection_query(
+            connection, fk_query, params, has_filter_names
         )
 
+        # Each in-scope relation gets an entry, defaulting to the empty list
+        # (== ReflectionDefaults.foreign_keys()) when it has no foreign keys.
+        result = {}
+        fk_by_name = {}
         for row in c:
+            key = self._relation_key(schema, row.relation_name, name_map)
+            if key not in result:
+                result[key] = []
+                fk_by_name[key] = {}
+            if row.cname is None:
+                continue
+
             cname = self.normalize_name(row.cname)
-            fk = fks[cname]
-            if not fk["name"]:
-                fk["name"] = cname
-                fk["referred_table"] = self.normalize_name(row.targetrname)
+            fk = fk_by_name[key].get(cname)
+            if fk is None:
+                fk = {
+                    "name": cname,
+                    "constrained_columns": [],
+                    "referred_schema": None,
+                    "referred_table": self.normalize_name(row.targetrname),
+                    "referred_columns": [],
+                    "options": {},
+                }
+                fk_by_name[key][cname] = fk
+                result[key].append(fk)
             fk["constrained_columns"].append(self.normalize_name(row.fname))
             fk["referred_columns"].append(self.normalize_name(row.targetfname))
             if row.update_rule not in ["NO ACTION", "RESTRICT"]:
@@ -1015,195 +1193,324 @@ class FBDialect(default.DefaultDialect):
             if row.delete_rule not in ["NO ACTION", "RESTRICT"]:
                 fk["options"]["ondelete"] = row.delete_rule
 
-        result = list(fks.values())
-        if result:
-            return result
-
-        if not self.has_table(connection, table_name, schema):
-            raise exc.NoSuchTableError(table_name)
-
-        return reflection.ReflectionDefaults.foreign_keys()
+        return result.items()
 
     @reflection.cache
     def get_indexes(self, connection, table_name, schema=None, **kw):
+        data = self.get_multi_indexes(
+            connection,
+            schema=schema,
+            filter_names=[table_name],
+            scope=reflection.ObjectScope.ANY,
+            kind=reflection.ObjectKind.ANY,
+            **kw,
+        )
+        return self._value_or_raise(data, table_name, schema)
+
+    def _get_column_sets(self, connection, schema, kind, scope, filter_names):
+        # Map each in-scope relation to the set of its (normalized) column
+        # names, used to tell apart columns from functions inside an
+        # expression-based index definition.
+        relation_filter, params, has_filter_names, name_map = (
+            self._relation_filter(kind, scope, filter_names)
+        )
+        colset_query = """
+            SELECT TRIM(r.rdb$relation_name) AS relation_name,
+                   TRIM(rf.rdb$field_name) AS field_name
+            FROM rdb$relations r
+                 JOIN rdb$relation_fields rf
+                   ON rf.rdb$relation_name = r.rdb$relation_name
+            WHERE {relation_filter}
+        """.format(relation_filter=relation_filter)
+
+        c = self._exec_reflection_query(
+            connection, colset_query, params, has_filter_names
+        )
+        colsets = util.defaultdict(set)
+        for row in c:
+            key = self._relation_key(schema, row.relation_name, name_map)
+            colsets[key].add(self.normalize_name(row.field_name))
+        return colsets
+
+    def get_multi_indexes(
+        self,
+        connection,
+        *,
+        schema=None,
+        filter_names=None,
+        scope=reflection.ObjectScope.DEFAULT,
+        kind=reflection.ObjectKind.TABLE,
+        **kw,
+    ):
         condition_source_expr = "TRIM(SUBSTRING(ix.rdb$condition_source FROM 6 FOR CHAR_LENGTH(ix.rdb$condition_source) - 5))"
 
         if self.server_version_info < (5,):
             # Firebird 4 and lower doesn't have RDB$CONDITION_SOURCE (for partial indices)
             condition_source_expr = "CAST(NULL AS BLOB SUB_TYPE TEXT)"
 
-        indexes_query = f"""
-            SELECT TRIM(ix.rdb$index_name) AS index_name,
+        relation_filter, params, has_filter_names, name_map = (
+            self._relation_filter(kind, scope, filter_names)
+        )
+        # Exclude indexes that back a FOREIGN KEY (rdb$foreign_key) or a
+        # PRIMARY KEY constraint via the join condition, so a table whose only
+        # indexes are constraint-backed still appears (with an empty entry)
+        # instead of vanishing from the result set.
+        indexes_query = """
+            SELECT TRIM(r.rdb$relation_name) AS relation_name,
+                   TRIM(ix.rdb$index_name) AS index_name,
                    ix.rdb$unique_flag AS unique_flag,
                    ix.rdb$index_type AS descending_flag,
                    TRIM(ic.rdb$field_name) AS field_name,
-                   TRIM(ix.rdb$expression_source) expression_source,
-                   {condition_source_expr} condition_source
-            FROM rdb$indices ix
-                LEFT OUTER JOIN rdb$index_segments ic
-                  ON ic.rdb$index_name = ix.rdb$index_name
-                LEFT OUTER JOIN rdb$relation_constraints rc
-                             ON rc.rdb$index_name = ic.rdb$index_name
-            WHERE ix.rdb$relation_name = :relation_name
-              AND ix.rdb$foreign_key IS NULL
-              AND COALESCE(rc.rdb$constraint_type, '') <> 'PRIMARY KEY'
-            ORDER BY ix.rdb$index_name, ic.rdb$field_position
-        """
-        tablename = self.denormalize_name(table_name)
-
-        # Do not use connection.exec_driver_sql() here.
-        #    During tests we need to commit CREATE INDEX before this query. See provision.py listener.
-        c = connection.execute(
-            text(indexes_query), {"relation_name": tablename}
+                   TRIM(ix.rdb$expression_source) AS expression_source,
+                   {condition_source} AS condition_source
+            FROM rdb$relations r
+                 LEFT OUTER JOIN rdb$indices ix
+                   ON ix.rdb$relation_name = r.rdb$relation_name
+                  AND ix.rdb$foreign_key IS NULL
+                  AND ix.rdb$index_name NOT IN (
+                          SELECT rc.rdb$index_name
+                          FROM rdb$relation_constraints rc
+                          WHERE rc.rdb$constraint_type = 'PRIMARY KEY'
+                            AND rc.rdb$index_name IS NOT NULL
+                      )
+                 LEFT OUTER JOIN rdb$index_segments ic
+                   ON ic.rdb$index_name = ix.rdb$index_name
+            WHERE {relation_filter}
+            ORDER BY r.rdb$relation_name, ix.rdb$index_name, ic.rdb$field_position
+        """.format(
+            condition_source=condition_source_expr,
+            relation_filter=relation_filter,
         )
 
-        indexes = util.defaultdict(dict)
+        c = self._exec_reflection_query(
+            connection, indexes_query, params, has_filter_names
+        )
+
+        result = {}  # key -> {index_name -> indexrec}
+        order = util.defaultdict(list)  # key -> index_name order
+        has_expressions = False
         for row in c:
-            indexrec = indexes[row.index_name]
-            if "name" not in indexrec:
-                indexrec["name"] = self.normalize_name(row.index_name)
-                indexrec["column_names"] = []
-                indexrec["unique"] = bool(row.unique_flag)
+            key = self._relation_key(schema, row.relation_name, name_map)
+            indexes = result.setdefault(key, {})
+            if row.index_name is None:
+                # relation with no reflectable index -> empty entry
+                continue
+            indexrec = indexes.get(row.index_name)
+            if indexrec is None:
+                indexrec = {
+                    "name": self.normalize_name(row.index_name),
+                    "column_names": [],
+                    "unique": bool(row.unique_flag),
+                }
                 if row.expression_source is not None:
-                    expr = row.expression_source[
-                        1:-1
-                    ]  # Remove outermost parenthesis added by Firebird
+                    # Remove outermost parenthesis added by Firebird
+                    expr = row.expression_source[1:-1]
                     indexrec["expressions"] = expr.split(EXPRESSION_SEPARATOR)
+                    has_expressions = True
                 indexrec["dialect_options"] = {
                     "firebird_descending": bool(row.descending_flag),
                     "firebird_where": row.condition_source,
                 }
+                indexes[row.index_name] = indexrec
+                order[key].append(row.index_name)
 
             indexrec["column_names"].append(
                 self.normalize_name(row.field_name)
             )
 
-        def _get_column_set(tablename):
-            colqry = """
-                SELECT TRIM(r.rdb$field_name) AS fname
-                FROM rdb$relation_fields r
-                WHERE r.rdb$relation_name = ?
-            """
-            return {
-                self.normalize_name(row.fname)
-                for row in connection.exec_driver_sql(colqry, (tablename,))
-            }
+        # For expression-based indexes, distinguish column references from
+        # functions in the stored expression. One query covers all relations.
+        if has_expressions:
+            colsets = self._get_column_sets(
+                connection, schema, kind, scope, filter_names
+            )
+            for key, indexes in result.items():
+                colset = colsets.get(key, set())
+                for indexrec in indexes.values():
+                    expr = indexrec.get("expressions")
+                    if expr is not None:
+                        indexrec["column_names"] = [
+                            x if self.normalize_name(x) in colset else None
+                            for x in expr
+                        ]
 
-        def _adjust_column_names_for_expressions(result, tablename):
-            # Identify which expression elements are columns
-            colset = _get_column_set(tablename)
-            for i in result:
-                expr = i.get("expressions")
-                if expr is not None:
-                    i["column_names"] = [
-                        x if self.normalize_name(x) in colset else None
-                        for x in expr
-                    ]
-            return result
-
-        result = list(indexes.values())
-        if result:
-            return _adjust_column_names_for_expressions(result, tablename)
-
-        if not self.has_table(connection, table_name, schema):
-            raise exc.NoSuchTableError(table_name)
-
-        return reflection.ReflectionDefaults.indexes()
+        return {
+            key: [result[key][name] for name in order[key]] for key in result
+        }.items()
 
     @reflection.cache
     def get_unique_constraints(
         self, connection, table_name, schema=None, **kw
     ):
+        data = self.get_multi_unique_constraints(
+            connection,
+            schema=schema,
+            filter_names=[table_name],
+            scope=reflection.ObjectScope.ANY,
+            kind=reflection.ObjectKind.ANY,
+            **kw,
+        )
+        return self._value_or_raise(data, table_name, schema)
+
+    def get_multi_unique_constraints(
+        self,
+        connection,
+        *,
+        schema=None,
+        filter_names=None,
+        scope=reflection.ObjectScope.DEFAULT,
+        kind=reflection.ObjectKind.TABLE,
+        **kw,
+    ):
+        relation_filter, params, has_filter_names, name_map = (
+            self._relation_filter(kind, scope, filter_names)
+        )
         unique_constraints_query = """
-            SELECT TRIM(rc.rdb$constraint_name) AS cname,
+            SELECT TRIM(r.rdb$relation_name) AS relation_name,
+                   TRIM(rc.rdb$constraint_name) AS cname,
                    TRIM(se.rdb$field_name) AS column_name
-            FROM rdb$index_segments se
-                 JOIN rdb$relation_constraints rc
-                   ON rc.rdb$index_name = se.rdb$index_name
-                 JOIN rdb$relations r
-                   ON r.rdb$relation_name = rc.rdb$relation_name
-                  AND COALESCE(r.rdb$system_flag, 0) = 0
-            WHERE rc.rdb$constraint_type = 'UNIQUE'
-              AND r.rdb$relation_name = ?
-            ORDER BY rc.rdb$constraint_name, se.rdb$field_position
-        """
-        tablename = self.denormalize_name(table_name)
-        c = connection.exec_driver_sql(unique_constraints_query, (tablename,))
+            FROM rdb$relations r
+                 LEFT JOIN rdb$relation_constraints rc
+                        ON rc.rdb$relation_name = r.rdb$relation_name
+                       AND rc.rdb$constraint_type = 'UNIQUE'
+                 LEFT JOIN rdb$index_segments se
+                        ON se.rdb$index_name = rc.rdb$index_name
+            WHERE {relation_filter}
+            ORDER BY r.rdb$relation_name, rc.rdb$constraint_name, se.rdb$field_position
+        """.format(relation_filter=relation_filter)
 
-        ucs = util.defaultdict(lambda: {"name": None, "column_names": []})
+        c = self._exec_reflection_query(
+            connection, unique_constraints_query, params, has_filter_names
+        )
 
+        result = {}  # key -> {cname -> uc dict}
+        order = util.defaultdict(list)  # key -> cname order
         for row in c:
+            key = self._relation_key(schema, row.relation_name, name_map)
+            ucs = result.setdefault(key, {})
+            if row.cname is None:
+                continue
             cname = self.normalize_name(row.cname)
-            cc = ucs[cname]
-            if not cc["name"]:
-                cc["name"] = cname
+            cc = ucs.get(cname)
+            if cc is None:
+                cc = {"name": cname, "column_names": []}
+                ucs[cname] = cc
+                order[key].append(cname)
             cc["column_names"].append(self.normalize_name(row.column_name))
 
-        result = list(ucs.values())
-        if result:
-            return result
-
-        if not self.has_table(connection, table_name, schema):
-            raise exc.NoSuchTableError(table_name)
-
-        return reflection.ReflectionDefaults.unique_constraints()
+        return {
+            key: [result[key][name] for name in order[key]] for key in result
+        }.items()
 
     @reflection.cache
     def get_table_comment(self, connection, table_name, schema=None, **kw):
+        data = self.get_multi_table_comment(
+            connection,
+            schema=schema,
+            filter_names=[table_name],
+            scope=reflection.ObjectScope.ANY,
+            kind=reflection.ObjectKind.ANY,
+            **kw,
+        )
+        return self._value_or_raise(data, table_name, schema)
+
+    def get_multi_table_comment(
+        self,
+        connection,
+        *,
+        schema=None,
+        filter_names=None,
+        scope=reflection.ObjectScope.DEFAULT,
+        kind=reflection.ObjectKind.TABLE,
+        **kw,
+    ):
+        relation_filter, params, has_filter_names, name_map = (
+            self._relation_filter(kind, scope, filter_names)
+        )
+        # ``comment`` is a Firebird keyword, so the result column is aliased
+        # ``table_comment`` to keep attribute access on the row unambiguous.
         table_comment_query = """
-            SELECT TRIM(rdb$description) AS comment
-            FROM rdb$relations
-            WHERE rdb$relation_name = ?
-        """
-        tablename = self.denormalize_name(table_name)
-        c = connection.exec_driver_sql(table_comment_query, (tablename,))
+            SELECT TRIM(r.rdb$relation_name) AS relation_name,
+                   TRIM(r.rdb$description) AS table_comment
+            FROM rdb$relations r
+            WHERE {relation_filter}
+        """.format(relation_filter=relation_filter)
 
-        row = c.fetchone()
-        if row:
-            return {"text": row[0]}
+        c = self._exec_reflection_query(
+            connection, table_comment_query, params, has_filter_names
+        )
 
-        raise exc.NoSuchTableError(table_name)
+        # A relation with no comment yields {"text": None}, which equals
+        # ReflectionDefaults.table_comment(); a missing relation simply has no
+        # entry, so the single-table wrapper raises NoSuchTableError.
+        return {
+            self._relation_key(schema, row.relation_name, name_map): {
+                "text": row.table_comment
+            }
+            for row in c
+        }.items()
 
     @reflection.cache
     def get_check_constraints(self, connection, table_name, schema=None, **kw):
-        check_constraints_query = """
-            SELECT TRIM(rc.rdb$constraint_name) AS cname,
-                   TRIM(SUBSTRING(tr.rdb$trigger_source FROM 8 FOR CHAR_LENGTH(tr.rdb$trigger_source) - 8)) AS sqltext
-            FROM rdb$relation_constraints rc
-                 JOIN rdb$check_constraints ck
-                   ON ck.rdb$constraint_name = rc.rdb$constraint_name
-                 JOIN rdb$triggers tr
-                   ON tr.rdb$trigger_name = ck.rdb$trigger_name AND
-                      tr.rdb$trigger_type = 1 /* BEFORE UPDATE */
-            WHERE rc.rdb$constraint_type = 'CHECK' AND
-                  rc.rdb$relation_name = ?
-            ORDER BY 1
-        """
-        tablename = self.denormalize_name(table_name)
-        c = connection.exec_driver_sql(check_constraints_query, (tablename,))
+        data = self.get_multi_check_constraints(
+            connection,
+            schema=schema,
+            filter_names=[table_name],
+            scope=reflection.ObjectScope.ANY,
+            kind=reflection.ObjectKind.ANY,
+            **kw,
+        )
+        return self._value_or_raise(data, table_name, schema)
 
-        ccs = util.defaultdict(
-            lambda: {
-                "name": None,
-                "sqltext": None,
-            }
+    def get_multi_check_constraints(
+        self,
+        connection,
+        *,
+        schema=None,
+        filter_names=None,
+        scope=reflection.ObjectScope.DEFAULT,
+        kind=reflection.ObjectKind.TABLE,
+        **kw,
+    ):
+        relation_filter, params, has_filter_names, name_map = (
+            self._relation_filter(kind, scope, filter_names)
+        )
+        check_constraints_query = """
+            SELECT TRIM(r.rdb$relation_name) AS relation_name,
+                   TRIM(rc.rdb$constraint_name) AS cname,
+                   TRIM(SUBSTRING(tr.rdb$trigger_source FROM 8 FOR CHAR_LENGTH(tr.rdb$trigger_source) - 8)) AS sqltext
+            FROM rdb$relations r
+                 LEFT JOIN rdb$relation_constraints rc
+                        ON rc.rdb$relation_name = r.rdb$relation_name
+                       AND rc.rdb$constraint_type = 'CHECK'
+                 LEFT JOIN rdb$check_constraints ck
+                        ON ck.rdb$constraint_name = rc.rdb$constraint_name
+                 LEFT JOIN rdb$triggers tr
+                        ON tr.rdb$trigger_name = ck.rdb$trigger_name
+                       AND tr.rdb$trigger_type = 1 /* BEFORE UPDATE */
+            WHERE {relation_filter}
+            ORDER BY r.rdb$relation_name, rc.rdb$constraint_name
+        """.format(relation_filter=relation_filter)
+
+        c = self._exec_reflection_query(
+            connection, check_constraints_query, params, has_filter_names
         )
 
+        result = {}  # key -> {cname -> cc dict}
+        order = util.defaultdict(list)  # key -> cname order
         for row in c:
+            key = self._relation_key(schema, row.relation_name, name_map)
+            ccs = result.setdefault(key, {})
+            if row.cname is None:
+                continue
             cname = self.normalize_name(row.cname)
-            cc = ccs[cname]
-            if not cc["name"]:
-                cc["name"] = cname
-                cc["sqltext"] = row.sqltext
+            if cname not in ccs:
+                ccs[cname] = {"name": cname, "sqltext": row.sqltext}
+                order[key].append(cname)
 
-        result = list(ccs.values())
-        if result:
-            return result
-
-        if not self.has_table(connection, table_name, schema):
-            raise exc.NoSuchTableError(table_name)
-
-        return reflection.ReflectionDefaults.check_constraints()
+        return {
+            key: [result[key][name] for name in order[key]] for key in result
+        }.items()
 
     @reflection.cache
     def _load_domains(self, connection, schema=None, **kw):

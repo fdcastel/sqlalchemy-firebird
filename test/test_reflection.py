@@ -1,6 +1,7 @@
 import pytest
 from sqlalchemy import BigInteger
 from sqlalchemy import Column
+from sqlalchemy import event
 from sqlalchemy import exc
 from sqlalchemy import ForeignKey
 from sqlalchemy import Identity
@@ -747,6 +748,93 @@ class ReflectionTest(
                 "cc2": "a = 1 OR (a > 2 AND a < 5)",
                 "cc4": "b <> 'hi\nim a name   \nyup\n'",
             },
+        )
+
+    def test_get_multi_columns_groups_by_table(self, metadata, connection):
+        """The batched get_multi_columns groups results per relation."""
+        Table("multi_a", metadata, Column("x", Integer))
+        Table(
+            "multi_b",
+            metadata,
+            Column("y", String(10)),
+            Column("z", Integer),
+        )
+        metadata.create_all(connection)
+
+        data = inspect(connection).get_multi_columns(
+            filter_names=["multi_a", "multi_b"]
+        )
+
+        eq_(set(data), {(None, "multi_a"), (None, "multi_b")})
+        eq_([c["name"] for c in data[(None, "multi_a")]], ["x"])
+        eq_([c["name"] for c in data[(None, "multi_b")]], ["y", "z"])
+
+    def test_get_multi_constraints_include_empty_tables(
+        self, metadata, connection
+    ):
+        """Tables without a given constraint still get a (default) entry."""
+        Table(
+            "with_pk",
+            metadata,
+            Column("id", Integer, primary_key=True),
+        )
+        Table("without_pk", metadata, Column("x", Integer))
+        metadata.create_all(connection)
+
+        insp = inspect(connection)
+        names = ["with_pk", "without_pk"]
+
+        pks = insp.get_multi_pk_constraint(filter_names=names)
+        eq_(pks[(None, "with_pk")]["constrained_columns"], ["id"])
+        eq_(pks[(None, "without_pk")]["constrained_columns"], [])
+
+        # Foreign keys / indexes / unique & check constraints all default to []
+        for getter in (
+            insp.get_multi_foreign_keys,
+            insp.get_multi_indexes,
+            insp.get_multi_unique_constraints,
+            insp.get_multi_check_constraints,
+        ):
+            data = getter(filter_names=names)
+            eq_(set(data), {(None, "with_pk"), (None, "without_pk")})
+
+    def test_reflection_query_count_is_bounded(self, metadata, connection):
+        """MetaData.reflect() over many tables issues a bounded number of
+        queries thanks to the batched get_multi_* reflection (regression guard
+        against falling back to per-table reflection)."""
+        n_tables = 8
+        for i in range(n_tables):
+            Table(
+                f"batch_reflect_{i}",
+                metadata,
+                Column("id", Integer, primary_key=True),
+                Column("name", String(30)),
+                Column("code", String(10)),
+                UniqueConstraint("code", name=f"uq_batch_{i}"),
+                Index(f"ix_batch_name_{i}", "name"),
+                CheckConstraint("id > 0", name=f"ck_batch_{i}"),
+                comment=f"batch table {i}",
+            )
+        metadata.create_all(connection)
+
+        statements = []
+
+        def _before(conn, cursor, statement, params, context, executemany):
+            statements.append(statement)
+
+        event.listen(connection, "before_cursor_execute", _before)
+        try:
+            m2 = MetaData()
+            m2.reflect(connection)
+        finally:
+            event.remove(connection, "before_cursor_execute", _before)
+
+        # Per-table reflection would issue ~7 queries per table; the batched
+        # implementation is a small constant regardless of table count.
+        assert len(m2.tables) >= n_tables
+        assert len(statements) < 2 * n_tables, (
+            f"reflection issued {len(statements)} queries for {n_tables} "
+            f"tables: {statements}"
         )
 
 
