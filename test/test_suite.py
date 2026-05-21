@@ -14,7 +14,6 @@ from sqlalchemy.testing.suite import (
     ComponentReflectionTestExtra as _ComponentReflectionTestExtra,
     IdentityColumnTest as _IdentityColumnTest,
     IdentityReflectionTest as _IdentityReflectionTest,
-    StringTest as _StringTest,
     InsertBehaviorTest as _InsertBehaviorTest,
     RowCountTest as _RowCountTest,
     SimpleUpdateDeleteTest as _SimpleUpdateDeleteTest,
@@ -323,18 +322,6 @@ class IdentityReflectionTest(_IdentityReflectionTest):
                     ),
                     approx=False,
                 )
-
-
-class StringTest(_StringTest):
-    @pytest.mark.skip(
-        reason="Firebird does not accept a LIKE 'A%C%Z' in a VARCHAR(2) column"
-    )
-    def test_dont_truncate_rightside(
-        self, metadata, connection, expr, expected
-    ):
-        super().test_dont_truncate_rightside(
-            self, metadata, connection, expr, expected
-        )
 
 
 class InsertBehaviorTest(_InsertBehaviorTest):

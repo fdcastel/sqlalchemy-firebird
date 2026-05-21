@@ -147,6 +147,37 @@ class FBCompiler(sql.compiler.SQLCompiler):
             self.process(binary.right, **kw),
         )
 
+    def _coerce_like_pattern(self, binary):
+        # SQLAlchemy types a LIKE pattern after the column being matched, so
+        # Firebird infers the bound "?" as that column's type. A pattern longer
+        # than the column (e.g. 'A%C%Z' against VARCHAR(2)) then raises a
+        # string-truncation error, even though a LIKE pattern is conceptually
+        # unbounded. Retype a *bound* pattern to an unbounded text type so the
+        # RENDER_CASTS cast becomes CAST(? AS BLOB SUB_TYPE TEXT), which
+        # Firebird accepts for patterns of any length. Column/expression
+        # patterns are left alone (they carry no truncating cast).
+        right = binary.right
+        # ILIKE wraps the operand in lower(); unwrap to find the bind.
+        operand = right
+        if isinstance(operand, compiler.ilike_case_insensitive):
+            operand = operand.element
+        if not isinstance(operand, expression.BindParameter):
+            return binary
+
+        binary = binary._clone()
+        binary.right = right._with_binary_element_type(sa_types.String())
+        return binary
+
+    def visit_like_op_binary(self, binary, operator, **kw):
+        return super().visit_like_op_binary(
+            self._coerce_like_pattern(binary), operator, **kw
+        )
+
+    def visit_not_like_op_binary(self, binary, operator, **kw):
+        return super().visit_not_like_op_binary(
+            self._coerce_like_pattern(binary), operator, **kw
+        )
+
     def visit_now_func(self, fn, **kw):
         return "CURRENT_TIMESTAMP"
 

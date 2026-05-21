@@ -66,6 +66,32 @@ class QueryTest(fixtures.TestBase):
             1,
         )
 
+    @testing.provide_metadata
+    def test_like_pattern_longer_than_column(self, connection):
+        # A LIKE/ILIKE/NOT LIKE pattern longer than the matched column must
+        # not raise a string-truncation error: the pattern is cast to
+        # unbounded text, not the column's VARCHAR(2).
+        t = Table("likt", self.metadata, Column("x", String(2)))
+        t.create(testing.db)
+        connection.execute(t.insert(), [{"x": "AB"}, {"x": "BC"}, {"x": "AC"}])
+
+        eq_(
+            connection.scalars(select(t.c.x).where(t.c.x.like("A%C%Z"))).all(),
+            [],
+        )
+        eq_(
+            connection.scalars(select(t.c.x).where(t.c.x.ilike("a%c"))).all(),
+            ["AC"],
+        )
+        eq_(
+            sorted(
+                connection.scalars(
+                    select(t.c.x).where(t.c.x.notlike("A%C%Z"))
+                ).all()
+            ),
+            ["AB", "AC", "BC"],
+        )
+
     def test_percents_in_text(self, connection):
         for expr, result in (
             (text("select '%' from rdb$database"), "%"),

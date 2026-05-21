@@ -138,6 +138,37 @@ class CompileTest(fixtures.TablesTest, AssertsCompiledSQL):
             "ORDER BY sometable.col1",
         )
 
+    def test_like_pattern_cast_to_unbounded_text(self):
+        # A bound LIKE pattern is cast to unbounded text rather than the
+        # matched column's (narrow) type, so a pattern longer than the column
+        # does not truncate. Covers LIKE / NOT LIKE / ILIKE.
+        m = MetaData()
+        t = Table("t", m, Column("x", String(2)))
+        self.assert_compile(
+            select(t.c.x).where(t.c.x.like("A%C%Z")),
+            "SELECT t.x FROM t WHERE t.x LIKE CAST(:x_1 AS BLOB SUB_TYPE TEXT)",
+        )
+        self.assert_compile(
+            select(t.c.x).where(t.c.x.notlike("A%C%Z")),
+            "SELECT t.x FROM t WHERE t.x NOT LIKE "
+            "CAST(:x_1 AS BLOB SUB_TYPE TEXT)",
+        )
+        self.assert_compile(
+            select(t.c.x).where(t.c.x.ilike("a%c%z")),
+            "SELECT t.x FROM t WHERE lower(t.x) LIKE "
+            "lower(CAST(:x_1 AS BLOB SUB_TYPE TEXT))",
+        )
+
+    def test_like_with_column_pattern_not_cast(self):
+        # Only bound patterns are retyped; a column/expression pattern carries
+        # no truncating cast and is left unchanged.
+        m = MetaData()
+        t = Table("t", m, Column("x", String(2)), Column("y", String(50)))
+        self.assert_compile(
+            select(t.c.x).where(t.c.x.like(t.c.y)),
+            "SELECT t.x FROM t WHERE t.x LIKE t.y",
+        )
+
     #
     # Tests from postgresql/test_compiler.py
     #
