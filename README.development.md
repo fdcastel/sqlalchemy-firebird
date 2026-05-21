@@ -92,7 +92,7 @@ Supply a custom environment folder or extra pytest arguments as needed:
 
 CI runs the same provisioning flow on **Windows and Linux**, across Firebird 3.0.x, 4.0.x and 5.0.x (full sweep on the latest Python) and brackets Python at the supported floor (3.11) and the latest (3.14). See `.github/workflows/test.yml` for the matrix.
 
-> **Note:** the Linux Firebird 4.0/5.0 cells are currently non-blocking (`continue-on-error`). They hit a fatal `firebird-driver` finalization crash on Linux — the same fault that is only a non-fatal "access violation" warning on Windows. Firebird 3.0 on Linux and every Windows cell are required.
+> **Note:** Linux Firebird 4.0/5.0 previously hit a fatal `firebird-driver` finalization crash (the same fault is only a non-fatal "access violation" warning on Windows). It is fixed upstream by [python3-driver PR #72](https://github.com/FirebirdSQL/python3-driver/pull/72); until that ships to PyPI, CI/dev pin a patched beta via `[tool.uv.sources]` in `pyproject.toml`, so all cells are required and green. Remove the pin once an official `firebird-driver` with the fix is released.
 
 
 ## Debugging the tests
