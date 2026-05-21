@@ -616,6 +616,26 @@ class FBDialect(default.DefaultDialect):
     # suffix is carried by ``driver`` on the concrete dialect.
     name = "firebird"
 
+    # Render CAST(? AS <type>) around bound parameters whose type opts in via
+    # ``render_bind_cast`` (all the Firebird types do). This is required, not a
+    # nicety: Firebird infers parameter datatypes at PREPARE time, and rejects
+    # an untyped "?" wherever it cannot work the type out from context
+    # (e.g. a SELECT list, COALESCE(?, ?), a UNION column, ...) with a
+    # "Dynamic SQL Error / Datatype unknown". The cast supplies that type.
+    #
+    # Audited alternatives, both rejected:
+    #   * BindTyping.SETINPUTSIZES -- the firebird-driver cursor accepts
+    #     setinputsizes() but it cannot help: the server fails the PREPARE
+    #     before any input sizes apply, so the type must be in the SQL text.
+    #   * Context-selective casting (cast only where Firebird needs it) -- the
+    #     RENDER_CASTS mechanism is type-driven, not context-driven, and the
+    #     casts are deterministic so they don't defeat the statement cache.
+    #     The marginal SQL bloat isn't worth a fragile compiler-level rewrite.
+    #
+    # Length-less ``String`` binds render CAST(? AS BLOB SUB_TYPE TEXT): that
+    # is deliberate, not a bug -- a fixed VARCHAR(n) would overflow the char
+    # limit under a multibyte charset (e.g. VARCHAR(32765) is invalid on a
+    # UTF8 connection), whereas BLOB SUB_TYPE TEXT compares fine.
     bind_typing = BindTyping.RENDER_CASTS
 
     supports_alter = True

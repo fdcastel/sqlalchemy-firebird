@@ -50,6 +50,21 @@ class QueryTest(fixtures.TestBase):
             1,
         )
 
+    def test_render_casts_untyped_param_in_select_list(self, connection):
+        # Firebird rejects a bare "?" wherever it can't infer the datatype at
+        # PREPARE time (a SELECT list, COALESCE arguments, ...). The dialect's
+        # bind_typing=RENDER_CASTS rescues these by emitting CAST(? AS <type>).
+        # This locks that behaviour in: without RENDER_CASTS the statements
+        # below fail with "Dynamic SQL Error / Datatype unknown".
+        eq_(connection.execute(select(literal(5))).scalar(), 5)
+        eq_(connection.execute(select(literal("abc"))).scalar(), "abc")
+        eq_(
+            connection.execute(
+                select(func.coalesce(literal(1), literal(2)))
+            ).scalar(),
+            1,
+        )
+
     def test_percents_in_text(self, connection):
         for expr, result in (
             (text("select '%' from rdb$database"), "%"),
