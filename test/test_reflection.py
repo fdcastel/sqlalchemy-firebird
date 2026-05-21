@@ -750,6 +750,36 @@ class ReflectionTest(
             },
         )
 
+    def test_has_index_native(self, metadata, connection):
+        """has_index resolves via a single direct rdb$indices lookup."""
+        t = Table(
+            "hi_tbl",
+            metadata,
+            Column("id", Integer, primary_key=True),
+            Column("data", String(30)),
+        )
+        Index("hi_idx", t.c.data)
+        metadata.create_all(connection)
+
+        dialect = connection.dialect
+        is_true(dialect.has_index(connection, "hi_tbl", "hi_idx"))
+        is_(dialect.has_index(connection, "hi_tbl", "nonexistent"), False)
+        is_(dialect.has_index(connection, "nonexistent_tbl", "hi_idx"), False)
+
+        # Native implementation: a single statement (the generic base would
+        # issue has_table + get_indexes).
+        statements = []
+
+        def _before(conn, cursor, statement, params, context, executemany):
+            statements.append(statement)
+
+        event.listen(connection, "before_cursor_execute", _before)
+        try:
+            dialect.has_index(connection, "hi_tbl", "hi_idx")
+        finally:
+            event.remove(connection, "before_cursor_execute", _before)
+        eq_(len(statements), 1)
+
     def test_get_multi_columns_groups_by_table(self, metadata, connection):
         """The batched get_multi_columns groups results per relation."""
         Table("multi_a", metadata, Column("x", Integer))

@@ -705,6 +705,31 @@ class FBDialect(default.DefaultDialect):
         return c.first() is not None
 
     @reflection.cache
+    def has_index(self, connection, table_name, index_name, schema=None, **kw):
+        # Direct rdb$indices lookup instead of the generic base implementation
+        # (which runs has_table + get_indexes). Index names are global in
+        # Firebird, so the relation-name predicate scopes the check to this
+        # table. PRIMARY KEY / FOREIGN KEY backing indexes are excluded to stay
+        # consistent with get_indexes().
+        has_index_query = """
+            SELECT 1 AS has_index
+            FROM rdb$indices ix
+            WHERE ix.rdb$relation_name = ?
+              AND ix.rdb$index_name = ?
+              AND ix.rdb$foreign_key IS NULL
+              AND ix.rdb$index_name NOT IN (
+                      SELECT rc.rdb$index_name
+                      FROM rdb$relation_constraints rc
+                      WHERE rc.rdb$constraint_type = 'PRIMARY KEY'
+                        AND rc.rdb$index_name IS NOT NULL
+                  )
+        """
+        tablename = self.denormalize_name(table_name)
+        indexname = self.denormalize_name(index_name)
+        c = connection.exec_driver_sql(has_index_query, (tablename, indexname))
+        return c.first() is not None
+
+    @reflection.cache
     def get_table_names(self, connection, schema=None, **kw):
         tables_query = """
             SELECT TRIM(rdb$relation_name) AS relation_name
