@@ -8,6 +8,7 @@ from sqlalchemy import exc
 from sqlalchemy import extract
 from sqlalchemy import ForeignKey
 from sqlalchemy import func
+from sqlalchemy import Identity
 from sqlalchemy import Integer
 from sqlalchemy import literal
 from sqlalchemy import MetaData
@@ -219,6 +220,42 @@ class UpdateOrInsertTest(fixtures.TablesTest):
             [{"id": 1, "data": "A"}, {"id": 2, "data": "B"}],
         )
         eq_(self._all(connection), [(1, "A"), (2, "B")])
+
+
+class InsertOverridingTest(fixtures.TablesTest):
+    """Real-DB coverage for INSERT ... OVERRIDING (J7, FB4+)."""
+
+    __backend__ = True
+    run_deletes = "each"
+
+    @classmethod
+    def define_tables(cls, metadata):
+        Table(
+            "ovr",
+            metadata,
+            Column("id", Integer, Identity(always=True), primary_key=True),
+            Column("data", String(50)),
+        )
+
+    @testing.requires.firebird_4_or_higher
+    def test_overriding_system_value(self, connection):
+        # An explicit value can be forced into a GENERATED ALWAYS column.
+        t = self.tables.ovr
+        connection.execute(
+            fb_insert(t).values(id=100, data="x").overriding_system_value()
+        )
+        eq_(connection.execute(select(t)).fetchall(), [(100, "x")])
+
+    @testing.requires.firebird_4_or_higher
+    def test_overriding_system_value_returning(self, connection):
+        t = self.tables.ovr
+        r = connection.execute(
+            fb_insert(t)
+            .values(id=200, data="y")
+            .overriding_system_value()
+            .returning(t.c.id)
+        )
+        eq_(r.fetchall(), [(200,)])
 
 
 #

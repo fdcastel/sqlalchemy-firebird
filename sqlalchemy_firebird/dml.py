@@ -47,11 +47,16 @@ class Insert(StandardInsert):
     """Firebird-specific implementation of INSERT.
 
     Adds the :meth:`matching` method for Firebird's ``UPDATE OR INSERT``
-    upsert. Created with the :func:`sqlalchemy_firebird.insert` function.
+    upsert and :meth:`overriding_system_value` / :meth:`overriding_user_value`
+    for ``INSERT ... OVERRIDING``. Created with the
+    :func:`sqlalchemy_firebird.insert` function.
     """
 
     stringify_dialect = "firebird"
     inherit_cache = False
+
+    # None | "SYSTEM" | "USER" -- INSERT ... OVERRIDING {SYSTEM|USER} VALUE.
+    _fb_overriding = None
 
     @_generative
     def matching(self, *columns) -> Self:
@@ -62,6 +67,26 @@ class Insert(StandardInsert):
          table's primary key.
         """
         self._post_values_clause = UpdateOrInsertMatch(columns)
+        return self
+
+    @_generative
+    def overriding_system_value(self) -> Self:
+        """Render ``INSERT ... OVERRIDING SYSTEM VALUE`` (Firebird 4.0+).
+
+        Lets an explicit value be inserted into a ``GENERATED ALWAYS AS
+        IDENTITY`` column (which a plain INSERT rejects).
+        """
+        self._fb_overriding = "SYSTEM"
+        return self
+
+    @_generative
+    def overriding_user_value(self) -> Self:
+        """Render ``INSERT ... OVERRIDING USER VALUE`` (Firebird 4.0+).
+
+        Tells Firebird to ignore the user-supplied value for an identity
+        column and use the generated one instead.
+        """
+        self._fb_overriding = "USER"
         return self
 
 

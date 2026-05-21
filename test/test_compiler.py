@@ -261,6 +261,37 @@ class CompileTest(fixtures.TablesTest, AssertsCompiledSQL):
             "(CAST(:id AS INTEGER), CAST(:data AS VARCHAR(50)))",
         )
 
+    def test_insert_overriding_system_value(self):
+        # OVERRIDING goes between the column list and VALUES (J7, FB4+).
+        t = self._uoi_table()
+        self.assert_compile(
+            fb_insert(t).values(id=10, data="x").overriding_system_value(),
+            "INSERT INTO t (id, data) OVERRIDING SYSTEM VALUE VALUES "
+            "(CAST(:id AS INTEGER), CAST(:data AS VARCHAR(50)))",
+        )
+
+    def test_insert_overriding_user_value(self):
+        t = self._uoi_table()
+        self.assert_compile(
+            fb_insert(t).values(id=10, data="x").overriding_user_value(),
+            "INSERT INTO t (id, data) OVERRIDING USER VALUE VALUES "
+            "(CAST(:id AS INTEGER), CAST(:data AS VARCHAR(50)))",
+        )
+
+    def test_insert_overriding_requires_firebird_4(self):
+        t = self._uoi_table()
+        dialect = FBDialect_firebird()
+        dialect.server_version_info = (3, 0)
+        assert_raises_message(
+            exc.CompileError,
+            "requires Firebird 4.0",
+            fb_insert(t)
+            .values(id=10, data="x")
+            .overriding_system_value()
+            .compile,
+            dialect=dialect,
+        )
+
     def test_regexp_operators_not_supported(self):
         # Firebird's only regex predicate (SIMILAR TO) is whole-string
         # anchored with LIKE-style wildcards, semantically incompatible with

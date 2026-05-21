@@ -259,6 +259,16 @@ class FBCompiler(sql.compiler.SQLCompiler):
         # "INSERT INTO t (..) VALUES (..) [MATCHING (..)] [RETURNING ..]"; we
         # only need to turn the leading "INSERT" into "UPDATE OR INSERT".
         text = super().visit_insert(insert_stmt, **kw)
+
+        overriding = getattr(insert_stmt, "_fb_overriding", None)
+        if overriding is not None:
+            svi = self.dialect.server_version_info
+            if svi is not None and svi < (4,):
+                raise exc.CompileError(
+                    "INSERT ... OVERRIDING requires Firebird 4.0 or higher."
+                )
+            text = self._insert_overriding_clause(text, overriding)
+
         if isinstance(
             insert_stmt._post_values_clause, dml.UpdateOrInsertMatch
         ):
@@ -268,6 +278,22 @@ class FBCompiler(sql.compiler.SQLCompiler):
                     "INSERT ... FROM SELECT; use a VALUES row."
                 )
             text = "UPDATE OR " + text
+        return text
+
+    @staticmethod
+    def _insert_overriding_clause(text, overriding):
+        # OVERRIDING {SYSTEM|USER} VALUE goes between the column list and
+        # VALUES / SELECT. Insert it right after the column list -- the first
+        # balanced "(...)" group (column names never contain parentheses).
+        clause = " OVERRIDING %s VALUE" % overriding
+        depth = 0
+        for i, ch in enumerate(text):
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+                if depth == 0:
+                    return text[: i + 1] + clause + text[i + 1 :]
         return text
 
     def visit_fb_update_or_insert_match(self, clause, **kw):
