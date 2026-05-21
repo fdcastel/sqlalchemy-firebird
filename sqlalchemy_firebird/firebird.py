@@ -24,8 +24,7 @@ from firebird.driver import get_timezone
 
 
 class FBDialect_firebird(FBDialect):
-    name = "firebird.firebird"
-    driver = "firebird-driver"
+    driver = "firebird"
     supports_statement_cache = True
 
     @classmethod
@@ -47,27 +46,15 @@ class FBDialect_firebird(FBDialect):
     def set_isolation_level(self, dbapi_connection, level):
         dbapi_connection.set_isolation_level(self._isolation_lookup[level])
 
-    def set_readonly(self, connection, value):
-        connection.readonly = value
-
-    def get_readonly(self, connection):
-        return connection.readonly
-
-    def set_deferrable(self, connection, value):
-        connection.deferrable = value
-
-    def get_deferrable(self, connection):
-        return connection.deferrable
-
-    def do_terminate(self, dbapi_connection) -> None:
-        dbapi_connection.terminate()
-
     def create_connect_args(self, url):
         opts = url.translate_connect_args(username="user")
 
         qry = url.query
         if qry.get("fb_client_library"):
-            # Set driver_config.fb_client_library and remove it from remaining keys passed to .connect()
+            # firebird-driver loads a single native fbclient per process, so
+            # fb_client_library is inherently process-global: all engines in a
+            # process must agree on it. Set it and remove it from the keys
+            # passed to .connect().
             driver_config.fb_client_library.value = qry["fb_client_library"]
             qry = remove_keys(qry, {"fb_client_library"})
 
@@ -93,14 +80,23 @@ class FBDialect_firebird(FBDialect):
             cfg_driver_server.host.value = host_name
             cfg_driver_server.port.value = port_number
 
-            cfg_driver_database = driver_config.get_database(database_name)
+            # driver_config is process-global. Key the database registration
+            # by "server/database" rather than the database path alone, so two
+            # engines pointing at the same database path on different servers
+            # don't clobber each other's server mapping (A7). The config name
+            # is just an internal key; the real path lives in database.value.
+            database_key = f"{server_name}/{database_name}"
+
+            cfg_driver_database = driver_config.get_database(database_key)
             if cfg_driver_database is None:
                 cfg_driver_database = driver_config.register_database(
-                    database_name
+                    database_key
                 )
             cfg_driver_database.server.value = server_name
-            cfg_driver_database.database.value = opts["database"]
+            cfg_driver_database.database.value = database_name
 
+            # Connect via the registered config name.
+            opts["database"] = database_key
             del opts["host"]
 
         opts.update(qry)

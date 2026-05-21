@@ -3,6 +3,7 @@ import datetime
 from sqlalchemy import bindparam
 from sqlalchemy import cast
 from sqlalchemy import Column
+from sqlalchemy import create_engine
 from sqlalchemy import DateTime
 from sqlalchemy import extract
 from sqlalchemy import func
@@ -291,8 +292,8 @@ class CreateConnectArgsTest(fixtures.TestBase):
         eq_(srv_a.port.value, "3050")
         eq_(srv_b.port.value, "3051")
 
-        db_a = driver_config.get_database("db_a")
-        db_b = driver_config.get_database("db_b")
+        db_a = driver_config.get_database("myhost/3050/db_a")
+        db_b = driver_config.get_database("myhost/3051/db_b")
         eq_(db_a.server.value, "myhost/3050")
         eq_(db_b.server.value, "myhost/3051")
 
@@ -327,8 +328,8 @@ class CreateConnectArgsTest(fixtures.TestBase):
         eq_(srv_a.port.value, "3050")
         eq_(srv_b.port.value, "3051")
 
-        db_a = driver_config.get_database("db_v6a")
-        db_b = driver_config.get_database("db_v6b")
+        db_a = driver_config.get_database("::1/3050/db_v6a")
+        db_b = driver_config.get_database("::1/3051/db_v6b")
         eq_(db_a.server.value, "::1/3050")
         eq_(db_b.server.value, "::1/3051")
 
@@ -358,3 +359,52 @@ class CreateConnectArgsTest(fixtures.TestBase):
         assert srv_1 is not srv_2
         eq_(srv_1.host.value, "host_one")
         eq_(srv_2.host.value, "host_two")
+
+    def test_same_database_path_distinct_servers(self):
+        # Two engines pointing at the same database path on different servers
+        # must get distinct driver_config database registrations, so neither
+        # clobbers the other's server mapping (A7).
+        dialect = FBDialect_firebird()
+
+        dialect.create_connect_args(
+            make_url("firebird+firebird://u:p@host_a:3050/shared.fdb")
+        )
+        dialect.create_connect_args(
+            make_url("firebird+firebird://u:p@host_b:3050/shared.fdb")
+        )
+
+        db_a = driver_config.get_database("host_a/3050/shared.fdb")
+        db_b = driver_config.get_database("host_b/3050/shared.fdb")
+        assert db_a is not None and db_b is not None
+        assert db_a is not db_b
+        # Each registration keeps its own server mapping (no clobbering)...
+        eq_(db_a.server.value, "host_a/3050")
+        eq_(db_b.server.value, "host_b/3050")
+        # ...and both resolve to the same real database path.
+        eq_(db_a.database.value, "shared.fdb")
+        eq_(db_b.database.value, "shared.fdb")
+
+    def test_connect_args_uses_registered_database_key(self):
+        # The database name handed to .connect() must be the registered config
+        # key, so firebird-driver resolves the server/path from driver_config.
+        _, opts = FBDialect_firebird().create_connect_args(
+            make_url("firebird+firebird://u:p@somehost:3050/mydata.fdb")
+        )
+        eq_(opts["database"], "somehost/3050/mydata.fdb")
+        assert "host" not in opts
+        assert "port" not in opts
+
+
+class DialectNameTest(fixtures.TestBase):
+    def test_dialect_name_is_backend_name(self):
+        # By SQLAlchemy convention dialect.name is the backend name
+        # ("firebird"), not "firebird.firebird". Tools such as Alembic branch
+        # on dialect.name == "firebird" (A5 / H3).
+        eq_(FBDialect_firebird.name, "firebird")
+        eq_(FBDialect_firebird.driver, "firebird")
+
+    def test_created_engine_dialect_name(self):
+        # create_engine() does not connect; it only loads the dialect.
+        eng = create_engine("firebird+firebird://sysdba@/path/to/db.fdb")
+        eq_(eng.dialect.name, "firebird")
+        eq_(eng.name, "firebird")

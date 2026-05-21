@@ -568,6 +568,11 @@ class FBInspector(reflection.Inspector):
 
 
 class FBDialect(default.DefaultDialect):
+    # By SQLAlchemy convention ``name`` is the backend name (Alembic and
+    # other tools branch on ``dialect.name == "firebird"``); the URL driver
+    # suffix is carried by ``driver`` on the concrete dialect.
+    name = "firebird"
+
     bind_typing = BindTyping.RENDER_CASTS
 
     supports_alter = True
