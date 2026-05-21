@@ -1,12 +1,9 @@
 # Allow circular references between FBDialect and FBInspector
 from __future__ import annotations
 
-from packaging import version
-
 from typing import Any, List, TypedDict
 from typing import Optional
 
-from sqlalchemy import __version__ as SQLALCHEMY_VERSION
 from sqlalchemy import exc
 from sqlalchemy import schema as sa_schema
 from sqlalchemy import sql
@@ -167,16 +164,7 @@ class FBCompiler(sql.compiler.SQLCompiler):
         return " FROM rdb$database"
 
     def returning_clause(self, stmt, returning_cols, **kw):
-        if self.dialect.using_sqlalchemy2:
-            return super().returning_clause(stmt, returning_cols, **kw)
-
-        # For SQLAlchemy 1.4 compatibility only. Unneeded in 2.0.
-        columns = [
-            self._label_returning_column(stmt, c)
-            for c in expression._select_iterables(returning_cols)
-        ]
-
-        return "RETURNING " + ", ".join(columns)
+        return super().returning_clause(stmt, returning_cols, **kw)
 
 
 class FBDDLCompiler(sql.compiler.DDLCompiler):
@@ -189,13 +177,7 @@ class FBDDLCompiler(sql.compiler.DDLCompiler):
 
         has_identity = column.identity is not None
 
-        type_compiler_instance = (
-            self.dialect.type_compiler_instance
-            if self.dialect.using_sqlalchemy2
-            else self.dialect.type_compiler
-        )
-
-        compiled_type = type_compiler_instance.process(
+        compiled_type = self.dialect.type_compiler_instance.process(
             column.type,
             type_expression=column,
             identifier_preparer=self.preparer,
@@ -610,7 +592,6 @@ class FBDialect(default.DefaultDialect):
     statement_compiler = FBCompiler
     ddl_compiler = FBDDLCompiler
     type_compiler_cls = FBTypeCompiler
-    type_compiler = FBTypeCompiler  # For SQLAlchemy 1.4 compatibility only. Unneeded in 2.0.
     preparer = FBIdentifierPreparer
     execution_ctx_cls = FBExecutionContext
     inspector = FBInspector
@@ -681,8 +662,6 @@ class FBDialect(default.DefaultDialect):
             },
         ),
     ]
-
-    using_sqlalchemy2 = version.parse(SQLALCHEMY_VERSION).major >= 2
 
     def initialize(self, connection):
         super().initialize(connection)
@@ -948,11 +927,7 @@ class FBDialect(default.DefaultDialect):
         if not self.has_table(connection, table_name, schema):
             raise exc.NoSuchTableError(table_name)
 
-        return (
-            reflection.ReflectionDefaults.columns()
-            if self.using_sqlalchemy2
-            else []
-        )
+        return reflection.ReflectionDefaults.columns()
 
     @reflection.cache
     def get_pk_constraint(self, connection, table_name, schema=None, **kw):
@@ -981,11 +956,7 @@ class FBDialect(default.DefaultDialect):
         if not self.has_table(connection, table_name, schema):
             raise exc.NoSuchTableError(table_name)
 
-        return (
-            reflection.ReflectionDefaults.pk_constraint()
-            if self.using_sqlalchemy2
-            else {"constrained_columns": [], "name": None}
-        )
+        return reflection.ReflectionDefaults.pk_constraint()
 
     @reflection.cache
     def get_foreign_keys(self, connection, table_name, schema=None, **kw):
@@ -1046,11 +1017,7 @@ class FBDialect(default.DefaultDialect):
         if not self.has_table(connection, table_name, schema):
             raise exc.NoSuchTableError(table_name)
 
-        return (
-            reflection.ReflectionDefaults.foreign_keys()
-            if self.using_sqlalchemy2
-            else []
-        )
+        return reflection.ReflectionDefaults.foreign_keys()
 
     @reflection.cache
     def get_indexes(self, connection, table_name, schema=None, **kw):
@@ -1136,11 +1103,7 @@ class FBDialect(default.DefaultDialect):
         if not self.has_table(connection, table_name, schema):
             raise exc.NoSuchTableError(table_name)
 
-        return (
-            reflection.ReflectionDefaults.indexes()
-            if self.using_sqlalchemy2
-            else []
-        )
+        return reflection.ReflectionDefaults.indexes()
 
     @reflection.cache
     def get_unique_constraints(
@@ -1178,11 +1141,7 @@ class FBDialect(default.DefaultDialect):
         if not self.has_table(connection, table_name, schema):
             raise exc.NoSuchTableError(table_name)
 
-        return (
-            reflection.ReflectionDefaults.unique_constraints()
-            if self.using_sqlalchemy2
-            else []
-        )
+        return reflection.ReflectionDefaults.unique_constraints()
 
     @reflection.cache
     def get_table_comment(self, connection, table_name, schema=None, **kw):
@@ -1239,11 +1198,7 @@ class FBDialect(default.DefaultDialect):
         if not self.has_table(connection, table_name, schema):
             raise exc.NoSuchTableError(table_name)
 
-        return (
-            reflection.ReflectionDefaults.check_constraints()
-            if self.using_sqlalchemy2
-            else []
-        )
+        return reflection.ReflectionDefaults.check_constraints()
 
     @reflection.cache
     def _load_domains(self, connection, schema=None, **kw):

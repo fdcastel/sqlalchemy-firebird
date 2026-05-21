@@ -15,15 +15,18 @@ NATIONAL_CHARSET = "ISO8859_1"
 class _FBString(sqltypes.String):
     render_bind_cast = True
 
-    def __init__(self, charset: Optional[str] = None, **kw: Any):
+    def __init__(
+        self,
+        charset: Optional[str] = None,
+        length: Optional[int] = None,
+        collation: Optional[str] = None,
+        **kw: Any,
+    ):
+        # ``**kw`` swallows the internal keywords SQLAlchemy injects when it
+        # adapts another String subclass into this impl (e.g. Enum's
+        # ``_enums``), which String.__init__ would otherwise reject.
         self.charset = charset
-        # Only pass parameters that the parent String class accepts
-        string_kwargs = {}
-        if "length" in kw:
-            string_kwargs["length"] = kw["length"]
-        if "collation" in kw:
-            string_kwargs["collation"] = kw["collation"]
-        super().__init__(**string_kwargs)
+        super().__init__(length=length, collation=collation)
 
 
 class FBCHAR(_FBString, sqltypes.CHAR):
@@ -80,40 +83,10 @@ class FBFLOAT(sqltypes.FLOAT):
     __visit_name__ = "FLOAT"
     render_bind_cast = True
 
-    def __init__(self, precision=None, **kwargs):
-        # FLOAT doesn't accept 'scale' parameter, filter it out
-        float_kwargs = {k: v for k, v in kwargs.items() if k != "scale"}
-        # Set precision if provided
-        if precision is not None:
-            float_kwargs["precision"] = precision
-        # Provide defaults for required parameters
-        float_kwargs.setdefault("precision", None)
-        float_kwargs.setdefault("decimal_return_scale", None)
-        float_kwargs.setdefault("asdecimal", False)
-        super().__init__(**float_kwargs)
-
-    def bind_processor(self, dialect):
-        return None  # Dialect supports_native_decimal = True (no processor needed)
-
 
 class FBDOUBLE_PRECISION(sqltypes.DOUBLE_PRECISION):
     __visit_name__ = "DOUBLE_PRECISION"
     render_bind_cast = True
-
-    def __init__(self, precision=None, **kwargs):
-        # DOUBLE_PRECISION doesn't accept 'scale' parameter, filter it out
-        float_kwargs = {k: v for k, v in kwargs.items() if k != "scale"}
-        # Set precision if provided
-        if precision is not None:
-            float_kwargs["precision"] = precision
-        # Provide defaults for required parameters
-        float_kwargs.setdefault("precision", None)
-        float_kwargs.setdefault("decimal_return_scale", None)
-        float_kwargs.setdefault("asdecimal", False)
-        super().__init__(**float_kwargs)
-
-    def bind_processor(self, dialect):
-        return None  # Dialect supports_native_decimal = True (no processor needed)
 
 
 class FBDECFLOAT(sqltypes.Numeric):
@@ -121,17 +94,9 @@ class FBDECFLOAT(sqltypes.Numeric):
     render_bind_cast = True
 
     def __init__(self, precision=None, **kwargs):
-        # DECFLOAT (Numeric) accepts all parameters
-        if precision is not None:
-            kwargs["precision"] = precision
-        kwargs.setdefault("precision", None)
-        kwargs.setdefault("scale", None)
-        kwargs.setdefault("decimal_return_scale", None)
+        # Unlike Numeric, DECFLOAT returns floats unless asdecimal is set.
         kwargs.setdefault("asdecimal", False)
-        super().__init__(**kwargs)
-
-    def bind_processor(self, dialect):
-        return None  # Dialect supports_native_decimal = True (no processor needed)
+        super().__init__(precision=precision, **kwargs)
 
 
 class FBREAL(FBFLOAT):
@@ -142,30 +107,10 @@ class FBDECIMAL(sqltypes.DECIMAL):
     __visit_name__ = "DECIMAL"
     render_bind_cast = True
 
-    def __init__(self, **kwargs: Any):
-        kwargs["asdecimal"] = True
-        kwargs.setdefault("precision", None)
-        kwargs.setdefault("scale", None)
-        kwargs.setdefault("decimal_return_scale", None)
-        super().__init__(**kwargs)
-
-    def bind_processor(self, dialect):
-        return None  # Dialect supports_native_decimal = True (no processor needed)
-
 
 class FBNUMERIC(sqltypes.NUMERIC):
     __visit_name__ = "NUMERIC"
     render_bind_cast = True
-
-    def __init__(self, **kwargs: Any):
-        kwargs.setdefault("asdecimal", True)
-        kwargs.setdefault("precision", None)
-        kwargs.setdefault("scale", None)
-        kwargs.setdefault("decimal_return_scale", None)
-        super().__init__(**kwargs)
-
-    def bind_processor(self, dialect):
-        return None  # Dialect supports_native_decimal = True (no processor needed)
 
 
 class FBDATE(sqltypes.DATE):
