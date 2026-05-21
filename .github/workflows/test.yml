@@ -22,6 +22,12 @@ jobs:
   test:
     needs: lint
     runs-on: ${{ matrix.os }}
+    # Linux + Firebird 4.0/5.0 hits a fatal firebird-driver finalization
+    # crash (the same fault is only a non-fatal "access violation" warning on
+    # Windows). Run those cells as non-blocking until the upstream driver
+    # issue is resolved; Firebird 3.0 on Linux and every Windows cell stay
+    # required.
+    continue-on-error: ${{ matrix.os == 'ubuntu-22.04' && matrix.firebird-version != '3.0.14' }}
     strategy:
       fail-fast: false
       # Two dimensions with very different value:
