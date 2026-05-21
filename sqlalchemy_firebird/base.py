@@ -262,8 +262,7 @@ class FBCompiler(sql.compiler.SQLCompiler):
 
         overriding = getattr(insert_stmt, "_fb_overriding", None)
         if overriding is not None:
-            svi = self.dialect.server_version_info
-            if svi is not None and svi < (4,):
+            if not self.dialect._has_overriding:
                 raise exc.CompileError(
                     "INSERT ... OVERRIDING requires Firebird 4.0 or higher."
                 )
@@ -316,8 +315,7 @@ class FBCompiler(sql.compiler.SQLCompiler):
         # ORDER BY / ROWS on UPDATE OR INSERT are Firebird 5.0+ and follow
         # MATCHING (the base renders RETURNING after this clause).
         if clause.order_by_elements or clause.rows is not None:
-            svi = self.dialect.server_version_info
-            if svi is not None and svi < (5,):
+            if not self.dialect._has_dml_order_rows:
                 raise exc.CompileError(
                     "UPDATE OR INSERT ... ORDER BY / ROWS requires "
                     "Firebird 5.0 or higher."
@@ -484,11 +482,6 @@ class FBDDLCompiler(sql.compiler.DDLCompiler):
         )
 
     def get_identity_options(self, identity_options):
-        firebird_3 = (
-            self.dialect.server_version_info
-            and self.dialect.server_version_info < (4,)
-        )
-
         txt = []
         if identity_options.start is not None:
             start = identity_options.start
@@ -500,20 +493,18 @@ class FBDDLCompiler(sql.compiler.DDLCompiler):
 
             txt.append("START WITH %d" % start)
 
-        if not firebird_3:
+        # Firebird 3 ignores INCREMENT BY on identity columns.
+        if self.dialect._has_identity_always:
             if identity_options.increment is not None:
                 txt.append("INCREMENT BY %d" % identity_options.increment)
 
         return " ".join(txt)
 
     def visit_identity_column(self, identity, **kw):
-        firebird_3 = (
-            self.dialect.server_version_info
-            and self.dialect.server_version_info < (4,)
-        )
-
         kind = (
-            "ALWAYS" if identity.always and (not firebird_3) else "BY DEFAULT"
+            "ALWAYS"
+            if identity.always and self.dialect._has_identity_always
+            else "BY DEFAULT"
         )
         text = "GENERATED %s AS IDENTITY" % kind
 
@@ -538,11 +529,6 @@ class FBTypeCompiler(compiler.GenericTypeCompiler):
         collation: Optional[str] = None,
         charset: Optional[str] = None,
     ) -> str:
-        firebird_3 = (
-            self.dialect.server_version_info
-            and self.dialect.server_version_info < (4,)
-        )
-
         if name in ["BINARY", "VARBINARY", "NCHAR", "NVARCHAR"]:
             charset = None
             collation = None
@@ -550,7 +536,9 @@ class FBTypeCompiler(compiler.GenericTypeCompiler):
         if name == "NVARCHAR":
             name = "NATIONAL CHARACTER VARYING"
 
-        if firebird_3:
+        # Firebird 3 has no native BINARY/VARBINARY -- emulate with
+        # CHAR/VARCHAR CHARACTER SET OCTETS.
+        if not self.dialect._has_binary_types:
             if name == "BINARY":
                 name = "CHAR"
                 charset = fb_types.BINARY_CHARSET
@@ -679,7 +667,7 @@ class FBTypeCompiler(compiler.GenericTypeCompiler):
         }
 
     def visit_TIMESTAMP(self, type_, **kw):
-        if self.dialect.server_version_info < (4,):
+        if not self.dialect._has_time_zone_types:
             return super().visit_TIMESTAMP(type_, **kw)
 
         return "TIMESTAMP%s %s" % (
@@ -692,7 +680,7 @@ class FBTypeCompiler(compiler.GenericTypeCompiler):
         )
 
     def visit_TIME(self, type_, **kw):
-        if self.dialect.server_version_info < (4,):
+        if not self.dialect._has_time_zone_types:
             return super().visit_TIME(type_, **kw)
 
         return "TIME%s %s" % (
@@ -857,6 +845,54 @@ class FBDialect(default.DefaultDialect):
     supports_is_distinct_from = True
 
     requires_name_normalize = True
+
+    # --- Version capability flags (feature map §7) -----------------------
+    # Single source of truth for version-gated SQL/type features, replacing
+    # scattered ``server_version_info < (N,)`` checks. Each flag is True when
+    # the connected server is new enough -- and also when the version is
+    # unknown (bare compile, before ``initialize``), so stringification
+    # assumes a modern server.
+    def _server_at_least(self, major):
+        svi = self.server_version_info
+        return svi is None or svi >= (major,)
+
+    # Firebird 4.0+
+    @property
+    def _has_identity_always(self):  # GENERATED ALWAYS / INCREMENT BY
+        return self._server_at_least(4)
+
+    @property
+    def _has_binary_types(self):  # native BINARY / VARBINARY
+        return self._server_at_least(4)
+
+    @property
+    def _has_time_zone_types(self):  # TIME / TIMESTAMP WITH TIME ZONE
+        return self._server_at_least(4)
+
+    @property
+    def _has_int128(self):
+        return self._server_at_least(4)
+
+    @property
+    def _has_decfloat(self):
+        return self._server_at_least(4)
+
+    @property
+    def _has_overriding(self):  # INSERT ... OVERRIDING (J7)
+        return self._server_at_least(4)
+
+    # Firebird 5.0+
+    @property
+    def _has_partial_indexes(self):  # index WHERE / RDB$CONDITION_SOURCE
+        return self._server_at_least(5)
+
+    @property
+    def _has_rdb_keywords(self):  # live RDB$KEYWORDS keyword list (J5)
+        return self._server_at_least(5)
+
+    @property
+    def _has_dml_order_rows(self):  # UPDATE OR INSERT ORDER BY/ROWS (J8)
+        return self._server_at_least(5)
 
     colspecs = {
         sa_types.String: fb_types._FBString,
@@ -1546,7 +1582,7 @@ class FBDialect(default.DefaultDialect):
     ):
         condition_source_expr = "TRIM(SUBSTRING(ix.rdb$condition_source FROM 6 FOR CHAR_LENGTH(ix.rdb$condition_source) - 5))"
 
-        if self.server_version_info < (5,):
+        if not self._has_partial_indexes:
             # Firebird 4 and lower doesn't have RDB$CONDITION_SOURCE (for partial indices)
             condition_source_expr = "CAST(NULL AS BLOB SUB_TYPE TEXT)"
 

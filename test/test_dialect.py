@@ -24,6 +24,7 @@ from sqlalchemy.testing.assertions import AssertsCompiledSQL
 from sqlalchemy.testing.assertions import AssertsExecutionResults
 from sqlalchemy.testing.assertions import assert_raises
 from sqlalchemy.testing.assertions import eq_
+from sqlalchemy.testing.assertions import is_false
 from sqlalchemy.testing.assertions import is_true
 from sqlalchemy.engine.url import make_url
 from firebird.driver import driver_config
@@ -528,6 +529,55 @@ class DocumentedKwargsTest(fixtures.TestBase):
             firebird_on_commit="PRESERVE ROWS",
         )
         eq_(t.dialect_options["firebird"]["on_commit"], "PRESERVE ROWS")
+
+
+class CapabilityFlagsTest(fixtures.TestBase):
+    """The version capability flags (J1) are the single source of truth for
+    version-gated features. They map cleanly to FB4+/FB5+ and assume a modern
+    server when the version is unknown (bare compile)."""
+
+    _fb4 = (
+        "_has_identity_always",
+        "_has_binary_types",
+        "_has_time_zone_types",
+        "_has_int128",
+        "_has_decfloat",
+        "_has_overriding",
+    )
+    _fb5 = (
+        "_has_partial_indexes",
+        "_has_rdb_keywords",
+        "_has_dml_order_rows",
+    )
+
+    def _dialect(self, svi):
+        d = FBDialect_firebird()
+        d.server_version_info = svi
+        return d
+
+    def test_firebird_3(self):
+        d = self._dialect((3, 0, 0))
+        for name in self._fb4 + self._fb5:
+            is_false(getattr(d, name), name)
+
+    def test_firebird_4(self):
+        d = self._dialect((4, 0, 0))
+        for name in self._fb4:
+            is_true(getattr(d, name), name)
+        for name in self._fb5:
+            is_false(getattr(d, name), name)
+
+    def test_firebird_5(self):
+        d = self._dialect((5, 0, 0))
+        for name in self._fb4 + self._fb5:
+            is_true(getattr(d, name), name)
+
+    def test_unknown_version_assumes_modern(self):
+        # Before initialize() (e.g. bare stringify) the version is unknown;
+        # flags default to True so modern SQL is emitted.
+        d = self._dialect(None)
+        for name in self._fb4 + self._fb5:
+            is_true(getattr(d, name), name)
 
 
 class DialectNameTest(fixtures.TestBase):
