@@ -144,4 +144,13 @@ git tag v2.2.0
 git push origin v2.2.0
 ```
 
-The workflow will validate the tag, build the sdist + wheel with `uv build`, detect whether the tag is a pre-release, and publish a GitHub Release with both artifacts attached.
+The workflow runs three jobs:
+
+1. **build** — validates the tag, builds the sdist + wheel with `uv build`, detects whether the tag is a pre-release, and uploads the artifacts.
+2. **github-release** — publishes a GitHub Release with both artifacts attached.
+3. **publish-pypi** — uploads the artifacts to [PyPI](https://pypi.org/project/sqlalchemy-firebird/). **This runs for final versions only**; pre-releases (alpha/beta/rc/dev) build and create a GitHub Release but are *not* published to PyPI.
+
+PyPI uploads use [Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (OpenID Connect) — there are no PyPI tokens stored as secrets. Two one-time prerequisites must be in place for the `publish-pypi` job to succeed:
+
+- **PyPI:** a Trusted Publisher registered for this project at `https://pypi.org/manage/project/sqlalchemy-firebird/settings/publishing/` with Owner `fdcastel`, Repository `sqlalchemy-firebird`, Workflow `release.yml`, and Environment `pypi`.
+- **GitHub:** a repository [Environment](https://github.com/fdcastel/sqlalchemy-firebird/settings/environments) named `pypi` (the name must match the Trusted Publisher and the `environment:` in `release.yml`).
