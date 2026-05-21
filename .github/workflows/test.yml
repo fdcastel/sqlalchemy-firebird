@@ -21,12 +21,25 @@ jobs:
 
   test:
     needs: lint
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      # Two dimensions with very different value:
+      #   * Firebird version is where almost every dialect bug lives, so the
+      #     full 3.0/4.0/5.0 sweep runs on both OSes at the latest Python.
+      #   * Python version rarely matters for a pure-Python dialect, so we
+      #     bracket it: the supported floor (3.11) and the latest (3.14). The
+      #     floor is smoke-tested against the latest Firebird per OS; the
+      #     excludes below drop the low-value floor x old-Firebird cells.
       matrix:
-        python-version: ['3.11', '3.12', '3.13']
+        os: [windows-latest, ubuntu-latest]
+        python-version: ['3.11', '3.14']
         firebird-version: ['3.0.14', '4.0.7', '5.0.4']
+        exclude:
+          - python-version: '3.11'
+            firebird-version: '3.0.14'
+          - python-version: '3.11'
+            firebird-version: '4.0.7'
     env:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
@@ -35,9 +48,9 @@ jobs:
         with:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
-          # Distinct suffix per matrix cell so the three Firebird versions
-          # sharing a Python don't race on the same cache key.
-          cache-suffix: ${{ matrix.firebird-version }}
+          # Distinct suffix per matrix cell so cells don't race on a shared
+          # cache key.
+          cache-suffix: ${{ matrix.os }}-py${{ matrix.python-version }}-fb${{ matrix.firebird-version }}
       - name: uv sync
         run: uv sync
       - name: Install PSFirebird

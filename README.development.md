@@ -90,7 +90,7 @@ Supply a custom environment folder or extra pytest arguments as needed:
 .\run-tests.ps1 -FirebirdVersion 4.0.7 -EnvironmentPath C:\fb-test\fb40 -PytestArgs '-k', 'test_get_table_names'
 ```
 
-CI runs the same script across Firebird 3.0.x, 4.0.x and 5.0.x; see `.github/workflows/test.yml` for the matrix.
+CI runs the same provisioning flow on **Windows and Linux**, across Firebird 3.0.x, 4.0.x and 5.0.x (full sweep on the latest Python) and brackets Python at the supported floor (3.11) and the latest (3.14). See `.github/workflows/test.yml` for the matrix.
 
 
 ## Debugging the tests
