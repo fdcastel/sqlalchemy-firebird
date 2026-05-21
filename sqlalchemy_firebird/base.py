@@ -297,16 +297,49 @@ class FBCompiler(sql.compiler.SQLCompiler):
         return text
 
     def visit_fb_update_or_insert_match(self, clause, **kw):
-        if not clause.matching_elements:
-            return ""
-        return "MATCHING (%s)" % ", ".join(
-            (
-                self.preparer.quote(c)
-                if isinstance(c, str)
-                else self.process(c, include_table=False, use_schema=False)
+        parts = []
+        if clause.matching_elements:
+            parts.append(
+                "MATCHING (%s)"
+                % ", ".join(
+                    (
+                        self.preparer.quote(c)
+                        if isinstance(c, str)
+                        else self.process(
+                            c, include_table=False, use_schema=False
+                        )
+                    )
+                    for c in clause.matching_elements
+                )
             )
-            for c in clause.matching_elements
-        )
+
+        # ORDER BY / ROWS on UPDATE OR INSERT are Firebird 5.0+ and follow
+        # MATCHING (the base renders RETURNING after this clause).
+        if clause.order_by_elements or clause.rows is not None:
+            svi = self.dialect.server_version_info
+            if svi is not None and svi < (5,):
+                raise exc.CompileError(
+                    "UPDATE OR INSERT ... ORDER BY / ROWS requires "
+                    "Firebird 5.0 or higher."
+                )
+
+        if clause.order_by_elements:
+            parts.append(
+                "ORDER BY %s"
+                % ", ".join(
+                    self.process(e, **kw) for e in clause.order_by_elements
+                )
+            )
+
+        if clause.rows is not None:
+            if isinstance(clause.rows, int):
+                parts.append("ROWS %d" % clause.rows)
+            else:
+                parts.append(
+                    "ROWS %d TO %d" % (clause.rows[0], clause.rows[1])
+                )
+
+        return " ".join(parts)
 
 
 class FBDDLCompiler(sql.compiler.DDLCompiler):

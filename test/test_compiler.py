@@ -292,6 +292,41 @@ class CompileTest(fixtures.TablesTest, AssertsCompiledSQL):
             dialect=dialect,
         )
 
+    def test_update_or_insert_order_by_rows(self):
+        # ORDER BY / ROWS follow MATCHING, before RETURNING (J8, FB5+).
+        t = self._uoi_table()
+        self.assert_compile(
+            fb_insert(t)
+            .values(id=1, data="x")
+            .matching(t.c.id, order_by=t.c.data, rows=1),
+            "UPDATE OR INSERT INTO t (id, data) VALUES "
+            "(CAST(:id AS INTEGER), CAST(:data AS VARCHAR(50))) "
+            "MATCHING (id) ORDER BY t.data ROWS 1",
+        )
+
+    def test_update_or_insert_rows_to(self):
+        t = self._uoi_table()
+        self.assert_compile(
+            fb_insert(t).values(id=1, data="x").matching(t.c.id, rows=(2, 5)),
+            "UPDATE OR INSERT INTO t (id, data) VALUES "
+            "(CAST(:id AS INTEGER), CAST(:data AS VARCHAR(50))) "
+            "MATCHING (id) ROWS 2 TO 5",
+        )
+
+    def test_update_or_insert_order_rows_requires_firebird_5(self):
+        t = self._uoi_table()
+        dialect = FBDialect_firebird()
+        dialect.server_version_info = (4, 0)
+        assert_raises_message(
+            exc.CompileError,
+            "requires Firebird 5.0",
+            fb_insert(t)
+            .values(id=1, data="x")
+            .matching(t.c.id, rows=1)
+            .compile,
+            dialect=dialect,
+        )
+
     def test_regexp_operators_not_supported(self):
         # Firebird's only regex predicate (SIMILAR TO) is whole-string
         # anchored with LIKE-style wildcards, semantically incompatible with

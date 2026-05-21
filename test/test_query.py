@@ -222,6 +222,42 @@ class UpdateOrInsertTest(fixtures.TablesTest):
         eq_(self._all(connection), [(1, "A"), (2, "B")])
 
 
+class UpdateOrInsertOrderByTest(fixtures.TablesTest):
+    """UPDATE OR INSERT ORDER BY / ROWS row-limiting (J8, FB5+)."""
+
+    __backend__ = True
+    run_deletes = "each"
+
+    @classmethod
+    def define_tables(cls, metadata):
+        # No primary key -> MATCHING is required, and a non-unique key lets
+        # ROWS actually limit how many matched rows are updated.
+        Table(
+            "uoi_ord",
+            metadata,
+            Column("grp", Integer),
+            Column("data", String(50)),
+        )
+
+    @testing.requires.firebird_5_or_higher
+    def test_order_by_rows_limits_updated_rows(self, connection):
+        t = self.tables.uoi_ord
+        connection.execute(
+            t.insert(), [{"grp": 1, "data": "a"}, {"grp": 1, "data": "b"}]
+        )
+        # MATCHING (grp) matches both rows; ROWS 1 ORDER BY data updates only
+        # the first ('a' -> 'Z'), leaving 'b' untouched.
+        connection.execute(
+            fb_insert(t)
+            .values(grp=1, data="Z")
+            .matching(t.c.grp, order_by=t.c.data, rows=1)
+        )
+        eq_(
+            sorted(tuple(r) for r in connection.execute(select(t))),
+            [(1, "Z"), (1, "b")],
+        )
+
+
 class InsertOverridingTest(fixtures.TablesTest):
     """Real-DB coverage for INSERT ... OVERRIDING (J7, FB4+)."""
 

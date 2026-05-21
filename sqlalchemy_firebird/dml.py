@@ -59,14 +59,22 @@ class Insert(StandardInsert):
     _fb_overriding = None
 
     @_generative
-    def matching(self, *columns) -> Self:
+    def matching(self, *columns, order_by=None, rows=None) -> Self:
         """Render the statement as ``UPDATE OR INSERT ... MATCHING (...)``.
 
         :param \\*columns: the columns (or column names) that identify an
          existing row to update. When omitted, Firebird matches on the target
          table's primary key.
+        :param order_by: an ORDER BY expression (or list of them) constraining
+         which matched rows are updated together with ``rows``. **Firebird
+         5.0+.**
+        :param rows: limit the number of matched rows updated -- an ``int``
+         (``ROWS n``) or a ``(start, end)`` pair (``ROWS start TO end``).
+         **Firebird 5.0+.**
         """
-        self._post_values_clause = UpdateOrInsertMatch(columns)
+        self._post_values_clause = UpdateOrInsertMatch(
+            columns, order_by=order_by, rows=rows
+        )
         return self
 
     @_generative
@@ -92,14 +100,37 @@ class Insert(StandardInsert):
 
 class UpdateOrInsertMatch(ClauseElement):
     """Marks an :class:`Insert` as ``UPDATE OR INSERT`` and carries the
-    optional ``MATCHING`` columns. Installed as the statement's
-    ``_post_values_clause`` so it renders just after ``VALUES (...)``."""
+    optional ``MATCHING`` columns plus the Firebird 5.0+ ``ORDER BY`` / ``ROWS``
+    clauses. Installed as the statement's ``_post_values_clause`` so it renders
+    just after ``VALUES (...)`` (and before ``RETURNING``)."""
 
     __visit_name__ = "fb_update_or_insert_match"
     stringify_dialect = "firebird"
     inherit_cache = False
 
-    def __init__(self, columns):
+    def __init__(self, columns, order_by=None, rows=None):
         self.matching_elements = [
             coercions.expect(roles.DMLColumnRole, c) for c in columns
         ]
+
+        if order_by is None:
+            order_by = ()
+        elif not isinstance(order_by, (list, tuple)):
+            order_by = (order_by,)
+        self.order_by_elements = [
+            coercions.expect(roles.OrderByRole, e) for e in order_by
+        ]
+
+        if rows is not None and not (
+            isinstance(rows, int)
+            or (
+                isinstance(rows, (list, tuple))
+                and len(rows) == 2
+                and all(isinstance(x, int) for x in rows)
+            )
+        ):
+            raise ValueError(
+                "rows must be an int (ROWS n) or a (start, end) pair "
+                "(ROWS start TO end)"
+            )
+        self.rows = rows
