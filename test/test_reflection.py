@@ -230,6 +230,13 @@ class DomainReflectionTest(fixtures.TestBase, AssertsExecutionResults):
         ds = inspector.get_domains()
         eq_(ds, self.all_domains)
 
+    def test_inspect_domains_via_engine(self):
+        # get_domains must be reachable straight off an Engine, not only a
+        # Connection (the dialect installs FBInspector as its inspector).
+        inspector = inspect(testing.db)
+        ds = inspector.get_domains()
+        eq_(ds, self.all_domains)
+
 
 class ReflectionTest(
     ReflectionFixtures, AssertsCompiledSQL, ComparesIndexes, fixtures.TestBase

@@ -573,6 +573,13 @@ class FBInspector(reflection.Inspector):
     def get_domains(
         self, schema: Optional[str] = None
     ) -> List[ReflectedDomain]:
+        """Firebird-specific: reflect the database's domains.
+
+        Returns a list of :class:`.ReflectedDomain` dicts (name, nullability,
+        default, check constraint and comment). Reachable on any Firebird
+        engine or connection via ``inspect(engine).get_domains()`` since the
+        dialect installs :class:`.FBInspector` as its inspector.
+        """
         with self._operation_context() as conn:
             return self.dialect._load_domains(
                 conn, schema, info_cache=self.info_cache
