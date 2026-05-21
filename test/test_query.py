@@ -19,6 +19,7 @@ from sqlalchemy import Table
 from sqlalchemy import testing
 from sqlalchemy import text
 from sqlalchemy import Time
+from sqlalchemy import true
 from sqlalchemy import union
 from sqlalchemy.testing import assert_raises
 from sqlalchemy.testing import AssertsExecutionResults
@@ -220,6 +221,96 @@ class UpdateOrInsertTest(fixtures.TablesTest):
             [{"id": 1, "data": "A"}, {"id": 2, "data": "B"}],
         )
         eq_(self._all(connection), [(1, "A"), (2, "B")])
+
+
+class AnalyticsTest(fixtures.TablesTest):
+    """FB4+ analytics work through SQLAlchemy core: aggregate FILTER, window
+    ranking functions and LATERAL joins (J10)."""
+
+    __backend__ = True
+    run_inserts = "once"
+    run_deletes = None
+
+    @classmethod
+    def define_tables(cls, metadata):
+        Table(
+            "an",
+            metadata,
+            Column("id", Integer, primary_key=True, autoincrement=False),
+            Column("grp", Integer),
+            Column("val", Integer),
+        )
+
+    @classmethod
+    def insert_data(cls, connection):
+        connection.execute(
+            cls.tables.an.insert(),
+            [{"id": i, "grp": i % 2, "val": i * 10} for i in range(1, 6)],
+        )
+
+    @testing.requires.firebird_4_or_higher
+    def test_aggregate_filter(self, connection):
+        t = self.tables.an
+        row = connection.execute(
+            select(
+                func.count().filter(t.c.val > 20), func.count()
+            ).select_from(t)
+        ).one()
+        eq_(row, (3, 5))
+
+    @testing.requires.firebird_4_or_higher
+    def test_window_ranking_functions(self, connection):
+        # row_number()/ntile() -- no-arg and literal-arg window functions.
+        t = self.tables.an
+        rows = connection.execute(
+            select(
+                t.c.id,
+                func.row_number().over(order_by=t.c.val),
+                func.ntile(2).over(order_by=t.c.val),
+            ).order_by(t.c.id)
+        ).all()
+        eq_(rows, [(1, 1, 1), (2, 2, 1), (3, 3, 1), (4, 4, 2), (5, 5, 2)])
+
+    @testing.requires.firebird_4_or_higher
+    def test_cume_dist_percent_rank(self, connection):
+        t = self.tables.an
+        rows = [
+            (r[0], round(r[1], 4), round(r[2], 4))
+            for r in connection.execute(
+                select(
+                    t.c.id,
+                    func.cume_dist().over(order_by=t.c.val),
+                    func.percent_rank().over(order_by=t.c.val),
+                ).order_by(t.c.id)
+            )
+        ]
+        eq_(
+            rows,
+            [
+                (1, 0.2, 0.0),
+                (2, 0.4, 0.25),
+                (3, 0.6, 0.5),
+                (4, 0.8, 0.75),
+                (5, 1.0, 1.0),
+            ],
+        )
+
+    @testing.requires.firebird_4_or_higher
+    def test_lateral_join(self, connection):
+        # Correlated LATERAL: per-row count of same-group rows.
+        t = self.tables.an
+        a = t.alias("a")
+        lat = (
+            select(func.count().label("cnt"))
+            .where(t.c.grp == a.c.grp)
+            .lateral("lat")
+        )
+        rows = connection.execute(
+            select(a.c.id, lat.c.cnt)
+            .select_from(a.join(lat, true()))
+            .order_by(a.c.id)
+        ).all()
+        eq_(rows, [(1, 3), (2, 2), (3, 3), (4, 2), (5, 3)])
 
 
 class UpdateOrInsertOrderByTest(fixtures.TablesTest):

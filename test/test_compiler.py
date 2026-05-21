@@ -53,8 +53,11 @@ class CompileTest(fixtures.TablesTest, AssertsCompiledSQL):
             func.foo(1, 2),
             "foo(CAST(:foo_1 AS INTEGER), CAST(:foo_2 AS INTEGER))",
         )
+        # Niladic SQL keyword functions render without parens (handled by
+        # SQLAlchemy core), but a generic no-arg function keeps its parens --
+        # Firebird requires them for e.g. window functions like ROW_NUMBER().
         self.assert_compile(func.current_time(), "CURRENT_TIME")
-        self.assert_compile(func.foo(), "foo")
+        self.assert_compile(func.foo(), "foo()")
         t = Table(
             "sometable",
             self.metadata,
@@ -313,6 +316,24 @@ class CompileTest(fixtures.TablesTest, AssertsCompiledSQL):
             "UPDATE OR INSERT INTO t (id, data) VALUES "
             "(CAST(:id AS INTEGER), CAST(:data AS VARCHAR(50))) "
             "MATCHING (id) ROWS 2 TO 5",
+        )
+
+    def test_window_functions_keep_parens(self):
+        # No-arg window functions must render WITH parentheses on Firebird
+        # (J10): "row_number() OVER ...", not "row_number OVER ...".
+        t = table("tt", column("val"))
+        self.assert_compile(
+            select(func.row_number().over(order_by=t.c.val)),
+            "SELECT row_number() OVER (ORDER BY tt.val) AS anon_1 FROM tt",
+        )
+        self.assert_compile(
+            select(func.cume_dist().over(order_by=t.c.val)),
+            "SELECT cume_dist() OVER (ORDER BY tt.val) AS anon_1 FROM tt",
+        )
+        # NTILE's bucket count is inlined as a literal, not a CAST bind.
+        self.assert_compile(
+            select(func.ntile(4).over(order_by=t.c.val)),
+            "SELECT ntile(4) OVER (ORDER BY tt.val) AS anon_1 FROM tt",
         )
 
     def test_fb4_types_rejected_on_firebird_3(self):

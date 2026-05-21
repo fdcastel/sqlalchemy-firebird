@@ -52,6 +52,10 @@ The dialect adapts its SQL to ``server_version_info``:
 * **Partial indexes** (an index ``WHERE`` predicate) -- Firebird 5.0+.
 * **Multi-row RETURNING** -- Firebird 5.0+. (Single-row ``RETURNING`` on
   ``INSERT``/``UPDATE``/``DELETE`` works on all supported versions.)
+* **Analytics** -- ``LATERAL`` joins, aggregate ``FILTER (WHERE ...)`` and the
+  window ranking functions (``row_number``, ``rank``, ``dense_rank``,
+  ``ntile``, ``cume_dist``, ``percent_rank``) compile through SQLAlchemy core
+  and require Firebird 4.0+.
 
 Dialect-specific construct arguments
 ------------------------------------

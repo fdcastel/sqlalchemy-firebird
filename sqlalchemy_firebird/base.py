@@ -182,17 +182,18 @@ class FBCompiler(sql.compiler.SQLCompiler):
     def visit_now_func(self, fn, **kw):
         return "CURRENT_TIMESTAMP"
 
-    def function_argspec(self, fn, **kw):
-        if fn.clauses is not None and len(fn.clauses) > 0:
-            return self.process(fn.clause_expr, **kw)
-
-        return ""
-
     def visit_char_length_func(self, fn, **kw):
         return "CHAR_LENGTH" + self.function_argspec(fn, **kw)
 
     def visit_length_func(self, fn, **kw):
         return "CHAR_LENGTH" + self.function_argspec(fn, **kw)
+
+    def visit_ntile_func(self, fn, **kw):
+        # Firebird's NTILE rejects a CAST() argument, but bind_typing=
+        # RENDER_CASTS would wrap the bucket count as CAST(? AS INTEGER).
+        # Inline it as a literal integer instead.
+        kw["literal_binds"] = True
+        return "ntile%s" % self.function_argspec(fn, **kw)
 
     def order_by_clause(self, select, **kw):
         # In a UNION (or other compound select) Firebird only accepts ORDER BY
