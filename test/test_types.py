@@ -1,4 +1,7 @@
+import datetime
 import uuid
+
+from decimal import Decimal
 
 from sqlalchemy import Column
 from sqlalchemy import Float
@@ -353,6 +356,78 @@ class TypesTest(fixtures.TestBase):
             connection.execute(select(t.c.u).where(t.c.id == 1)).scalar(),
             data,
         )
+
+    @testing.provide_metadata
+    @testing.requires.firebird_4_or_higher
+    def test_decfloat_round_trip(self, connection):
+        # DECFLOAT(16) / DECFLOAT(34) preserve 16 / 34 significant decimal
+        # digits exactly (asdecimal=True keeps Decimal precision).
+        t = Table(
+            "test_decfloat_rt",
+            self.metadata,
+            Column("id", Integer, primary_key=True),
+            Column("d16", fb_types.FBDECFLOAT(precision=16, asdecimal=True)),
+            Column("d34", fb_types.FBDECFLOAT(precision=34, asdecimal=True)),
+        )
+        self.metadata.create_all(testing.db)
+
+        v16 = Decimal("3.141592653589793")  # 16 significant digits
+        v34 = Decimal(
+            "3.141592653589793238462643383279502"
+        )  # 34 significant digits
+        connection.execute(t.insert(), {"id": 1, "d16": v16, "d34": v34})
+
+        row = connection.execute(
+            select(t.c.d16, t.c.d34).where(t.c.id == 1)
+        ).first()
+        eq_(row[0], v16)
+        eq_(row[1], v34)
+
+    @testing.provide_metadata
+    @testing.requires.firebird_4_or_higher
+    def test_int128_round_trip(self, connection):
+        # INT128 holds values far beyond BIGINT, and NUMERIC with scale > 18
+        # is backed by INT128 storage.
+        t = Table(
+            "test_int128_rt",
+            self.metadata,
+            Column("id", Integer, primary_key=True),
+            Column("i128", fb_types.FBINT128),
+            Column("n38_20", fb_types.FBNUMERIC(precision=38, scale=20)),
+        )
+        self.metadata.create_all(testing.db)
+
+        big = 2**100  # 1267650600228229401496703205376, beyond BIGINT
+        n = Decimal("123456789012345678.12345678901234567890")  # 18 + 20 = 38
+        connection.execute(t.insert(), {"id": 1, "i128": big, "n38_20": n})
+
+        row = connection.execute(
+            select(t.c.i128, t.c.n38_20).where(t.c.id == 1)
+        ).first()
+        eq_(row[0], big)
+        eq_(row[1], n)
+
+    @testing.provide_metadata
+    @testing.requires.firebird_4_or_higher
+    def test_timestamp_tz_round_trip(self, connection):
+        # TIMESTAMP WITH TIME ZONE round-trips to the same instant, tz-aware.
+        # Firebird sub-second resolution is 1/10000 s, so use a microsecond
+        # value that is a multiple of 100.
+        t = Table(
+            "test_ts_tz_rt",
+            self.metadata,
+            Column("id", Integer, primary_key=True),
+            Column("ts_tz", fb_types.FBTIMESTAMP(timezone=True)),
+        )
+        self.metadata.create_all(testing.db)
+
+        tz = datetime.timezone(datetime.timedelta(hours=4))
+        ts = datetime.datetime(2024, 1, 15, 12, 30, 45, 123400, tzinfo=tz)
+        connection.execute(t.insert(), {"id": 1, "ts_tz": ts})
+
+        got = connection.execute(select(t.c.ts_tz).where(t.c.id == 1)).scalar()
+        is_not_none(got.tzinfo)
+        eq_(got, ts)  # same instant, regardless of the returned zone
 
     @testing.provide_metadata
     @testing.requires.firebird_4_or_higher

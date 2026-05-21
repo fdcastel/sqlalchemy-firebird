@@ -694,6 +694,17 @@ class FBDialect(default.DefaultDialect):
         sa_types.VARBINARY: fb_types.FBVARBINARY,
         sa_types.LargeBinary: fb_types.FBBLOB,
         sa_types.Uuid: fb_types.FBUUID,
+        # These Firebird types are *siblings* (not subclasses) of the colspec
+        # targets above (FBINTEGER for Integer, FBNUMERIC for Numeric), so
+        # adapt_type would otherwise downgrade them -- e.g. an FBINT128 /
+        # FBBIGINT bind would render CAST(? AS INTEGER) and overflow, and an
+        # FBDECFLOAT bind would render CAST(? AS NUMERIC(.., 4)) and lose
+        # precision. Map them to themselves so direct use keeps the right type.
+        fb_types.FBSMALLINT: fb_types.FBSMALLINT,
+        fb_types.FBBIGINT: fb_types.FBBIGINT,
+        fb_types.FBINT128: fb_types.FBINT128,
+        fb_types.FBDECIMAL: fb_types.FBDECIMAL,
+        fb_types.FBDECFLOAT: fb_types.FBDECFLOAT,
     }
 
     # SELECT TRIM(rdb$type_name) FROM rdb$types WHERE rdb$field_name = 'RDB$FIELD_TYPE' ORDER BY 1
