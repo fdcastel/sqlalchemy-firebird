@@ -1,7 +1,9 @@
 import datetime
+from unittest import mock
 
 from sqlalchemy import bindparam
 from sqlalchemy import cast
+from sqlalchemy import exc
 from sqlalchemy import Column
 from sqlalchemy import DateTime
 from sqlalchemy import extract
@@ -49,6 +51,57 @@ class ConnectionTest(fixtures.TablesTest):
                 assert False
         except Exception as err:
             eq_(testing.db.dialect.is_disconnect(err.orig, None, None), True)
+
+    def test_invalidate_closes_dbapi_connection(self, metadata):
+        # Invalidation must end the DBAPI connection, rolling back its open
+        # transaction; otherwise its locks block later DDL on the same table.
+        table = Table("invalidate_data", metadata, Column("id", Integer))
+        eng = engines.testing_engine(options={"use_reaper": False})
+        try:
+            table.create(eng)
+            conn = eng.connect()
+            conn.execute(table.insert().values(id=1))
+            dbapi_connection = conn.connection.dbapi_connection
+            with mock.patch.object(eng.pool.logger, "error") as log_error:
+                conn.invalidate()
+            try:
+                eq_(log_error.call_args_list, [])
+                eq_(dbapi_connection.is_closed(), True)
+            finally:
+                if not dbapi_connection.is_closed():
+                    dbapi_connection.rollback()
+                    dbapi_connection.close()
+
+            with eng.begin() as other:
+                eq_(other.execute(select(table.c.id)).all(), [])
+            table.drop(eng)
+        finally:
+            eng.dispose()
+
+    def test_invalidate_after_disconnect_is_clean(self):
+        eng = engines.testing_engine(options={"use_reaper": False})
+        try:
+            conn = eng.connect()
+            conn_id = conn.exec_driver_sql(
+                "SELECT CURRENT_CONNECTION FROM rdb$database"
+            ).scalar()
+            dbapi_connection = conn.connection.dbapi_connection
+            with testing.db.begin() as other:
+                other.exec_driver_sql(
+                    "DELETE FROM mon$attachments WHERE mon$attachment_id = ?",
+                    (conn_id,),
+                )
+            with mock.patch.object(eng.pool.logger, "error") as log_error:
+                try:
+                    conn.exec_driver_sql("SELECT 1 FROM rdb$database")
+                    assert False
+                except exc.DBAPIError as err:
+                    eq_(err.connection_invalidated, True)
+            eq_(log_error.call_args_list, [])
+            eq_(dbapi_connection.is_closed(), True)
+            conn.close()
+        finally:
+            eng.dispose()
 
 
 #
