@@ -70,6 +70,18 @@ with engine.begin():
     pass
 ```
 
+## Schema reflection
+
+Firebird 3, 4 and 5 do not have SQL schemas. On these versions,
+`inspect(engine).get_schema_names()` returns an empty list; reflect tables
+without a `schema` argument. No synthetic default namespace is exposed.
+
+Firebird 6 introduces SQL schemas and is outside this schema-reflection
+contract. Schema enumeration raises `NotImplementedError` on Firebird 6 and
+newer rather than reporting an empty database namespace. Supporting these
+versions requires coordinated schema-aware reflection and identifier
+preparation, which the dialect does not yet implement.
+
 ## Code of Conduct
 
 This project follows the SQLAlchemy [Code of Conduct](http://www.sqlalchemy.org/codeofconduct.html).
