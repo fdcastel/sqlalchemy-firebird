@@ -291,8 +291,8 @@ class CreateConnectArgsTest(fixtures.TestBase):
         eq_(srv_a.port.value, "3050")
         eq_(srv_b.port.value, "3051")
 
-        db_a = driver_config.get_database("db_a")
-        db_b = driver_config.get_database("db_b")
+        db_a = driver_config.get_database("myhost/3050:db_a")
+        db_b = driver_config.get_database("myhost/3051:db_b")
         eq_(db_a.server.value, "myhost/3050")
         eq_(db_b.server.value, "myhost/3051")
 
@@ -327,8 +327,8 @@ class CreateConnectArgsTest(fixtures.TestBase):
         eq_(srv_a.port.value, "3050")
         eq_(srv_b.port.value, "3051")
 
-        db_a = driver_config.get_database("db_v6a")
-        db_b = driver_config.get_database("db_v6b")
+        db_a = driver_config.get_database("::1/3050:db_v6a")
+        db_b = driver_config.get_database("::1/3051:db_v6b")
         eq_(db_a.server.value, "::1/3050")
         eq_(db_b.server.value, "::1/3051")
 
@@ -358,3 +358,23 @@ class CreateConnectArgsTest(fixtures.TestBase):
         assert srv_1 is not srv_2
         eq_(srv_1.host.value, "host_one")
         eq_(srv_2.host.value, "host_two")
+
+    def test_same_path_on_distinct_servers(self):
+        # Two servers can hold a database at the same path. Each engine must
+        # keep connecting to its own server after the other is created.
+        dialect = FBDialect_firebird()
+
+        _, opts_a = dialect.create_connect_args(
+            make_url("firebird+firebird://u:p@server_a:3050//data/app.fdb")
+        )
+        _, opts_b = dialect.create_connect_args(
+            make_url("firebird+firebird://u:p@server_b:3050//data/app.fdb")
+        )
+
+        assert opts_a["database"] != opts_b["database"]
+        db_a = driver_config.get_database(opts_a["database"])
+        db_b = driver_config.get_database(opts_b["database"])
+        eq_(db_a.server.value, "server_a/3050")
+        eq_(db_b.server.value, "server_b/3050")
+        eq_(db_a.database.value, "/data/app.fdb")
+        eq_(db_b.database.value, "/data/app.fdb")
