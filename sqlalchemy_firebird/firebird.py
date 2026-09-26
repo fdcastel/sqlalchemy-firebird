@@ -98,13 +98,19 @@ class FBDialect_firebird(FBDialect):
             cfg_driver_server.host.value = host_name
             cfg_driver_server.port.value = port_number
 
-            cfg_driver_database = driver_config.get_database(database_name)
+            # Key the database registration by server and path. Keyed by the
+            # path alone, two servers holding a database at the same path
+            # shared one entry, and registering the second re-pointed every
+            # engine of the first at the second server.
+            database_key = f"{server_name}:{database_name}"
+            cfg_driver_database = driver_config.get_database(database_key)
             if cfg_driver_database is None:
                 cfg_driver_database = driver_config.register_database(
-                    database_name
+                    database_key
                 )
             cfg_driver_database.server.value = server_name
-            cfg_driver_database.database.value = opts["database"]
+            cfg_driver_database.database.value = database_name
+            opts["database"] = database_key
 
             del opts["host"]
 
