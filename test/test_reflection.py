@@ -33,11 +33,46 @@ from sqlalchemy.testing import AssertsExecutionResults
 from sqlalchemy.testing import eq_
 from sqlalchemy.testing import fixtures
 
+from sqlalchemy_firebird.base import FBDialect
 from sqlalchemy_firebird.types import FBINTEGER
 
 #
 # Tests from postgresql/test_reflection.py
 #
+
+
+class SchemaNamesTest(fixtures.TestBase):
+    @testing.combinations((3, 0, 12), (4, 0, 7), (5, 0, 3))
+    def test_schemaless_versions(self, major, minor, patch):
+        dialect = FBDialect()
+        dialect.server_version_info = (major, minor, patch)
+        # There is nothing to query on these servers. An object with no
+        # connection methods also guards against accidental catalog SQL.
+        eq_(dialect.get_schema_names(object(), info_cache={}), [])
+        is_(dialect.supports_schemas, False)
+
+    @testing.combinations((None,), ((6, 0, 0),), ((7, 0, 0),))
+    def test_unknown_or_schema_capable_version(self, version):
+        dialect = FBDialect()
+        dialect.server_version_info = version
+        with pytest.raises(NotImplementedError, match="Firebird 3, 4 and 5"):
+            dialect.get_schema_names(object(), info_cache={})
+
+
+class SchemaNamesBackendTest(fixtures.TestBase):
+    __backend__ = True
+
+    @testing.combinations(("engine",), ("connection",), argnames="bind_type")
+    def test_schema_names(self, connection, bind_type):
+        if connection.dialect.server_version_info >= (6,):
+            pytest.skip("Firebird 6 schema support is not implemented")
+        bind = connection.engine if bind_type == "engine" else connection
+        inspector = inspect(bind)
+        eq_(inspector.get_schema_names(), [])
+        # Schema-list consumers may convert the Inspector result to a set.
+        eq_(set(inspector.get_schema_names()), set())
+        inspector.clear_cache()
+        eq_(inspector.get_schema_names(), [])
 
 
 class ReflectionFixtures:

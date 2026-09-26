@@ -698,6 +698,21 @@ class FBDialect(default.DefaultDialect):
         self.preparer.reserved_words = RESERVED_WORDS
 
     @reflection.cache
+    def get_schema_names(self, connection, **kw):
+        # Firebird 3-5 have no SQL schemas. Do not invent a default schema
+        # or query a catalog that does not exist on these versions.
+        version = self.server_version_info
+        if version is not None and (3,) <= version < (6,):
+            return []
+
+        # Firebird 6 introduces schemas. Enumeration must be implemented
+        # together with schema-aware reflection and identifier preparation;
+        # returning [] there would silently hide real namespaces.
+        raise NotImplementedError(
+            "Schema enumeration is implemented only for Firebird 3, 4 and 5"
+        )
+
+    @reflection.cache
     def has_table(self, connection, table_name, schema=None, **kw):
         has_table_query = """
             SELECT 1 AS has_table
