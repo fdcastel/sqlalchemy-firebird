@@ -65,7 +65,15 @@ class FBDialect_firebird(FBDialect):
         return connection.deferrable
 
     def do_terminate(self, dbapi_connection) -> None:
-        dbapi_connection.terminate()
+        # firebird-driver connections have no terminate(). close() rolls back
+        # every open transaction and detaches, releasing any locks it held.
+        try:
+            dbapi_connection.close()
+        except self.dbapi.DatabaseError as err:
+            # The server already ended this attachment; close() has marked
+            # the connection closed, so there is nothing left to release.
+            if not self.is_disconnect(err, None, None):
+                raise
 
     def create_connect_args(self, url):
         opts = url.translate_connect_args(username="user")
