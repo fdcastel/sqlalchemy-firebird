@@ -508,7 +508,10 @@ class FBTypeCompiler(compiler.GenericTypeCompiler):
         }
 
     def visit_TIMESTAMP(self, type_, **kw):
-        if self.dialect.server_version_info < (4,):
+        if (
+            self.dialect.server_version_info
+            and self.dialect.server_version_info < (4,)
+        ):
             return super().visit_TIMESTAMP(type_, **kw)
 
         return "TIMESTAMP%s %s" % (
@@ -521,7 +524,10 @@ class FBTypeCompiler(compiler.GenericTypeCompiler):
         )
 
     def visit_TIME(self, type_, **kw):
-        if self.dialect.server_version_info < (4,):
+        if (
+            self.dialect.server_version_info
+            and self.dialect.server_version_info < (4,)
+        ):
             return super().visit_TIME(type_, **kw)
 
         return "TIME%s %s" % (
