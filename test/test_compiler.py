@@ -22,6 +22,7 @@ from sqlalchemy import update
 from sqlalchemy.sql import sqltypes
 from sqlalchemy.testing import assert_raises_message
 from sqlalchemy.testing import AssertsCompiledSQL
+from sqlalchemy.testing import eq_
 from sqlalchemy.testing import fixtures
 from sqlalchemy.testing.assertions import eq_ignore_whitespace
 from sqlalchemy.types import TypeEngine
@@ -523,3 +524,32 @@ class CompileTest(fixtures.TablesTest, AssertsCompiledSQL):
             select(c1.bitwise_xor(c2)),
             "SELECT BIN_XOR(c1, c2) AS anon_1 FROM rdb$database",
         )
+
+
+class TemporalTypeVersionTest(fixtures.TestBase):
+    @testing.combinations(
+        (FbTypes.FBTIMESTAMP(), "TIMESTAMP WITHOUT TIME ZONE"),
+        (FbTypes.FBTIMESTAMP(timezone=True), "TIMESTAMP WITH TIME ZONE"),
+        (FbTypes.FBTIME(), "TIME WITHOUT TIME ZONE"),
+        (FbTypes.FBTIME(timezone=True), "TIME WITH TIME ZONE"),
+        (sqltypes.TIMESTAMP(), "TIMESTAMP WITHOUT TIME ZONE"),
+        argnames="type_, expected",
+    )
+    def test_unknown_server_version(self, type_, expected):
+        # A dialect that has not connected yet has no server version. Render
+        # the Firebird 4+ form, as the other version-dependent types do.
+        dialect = FBDialect_firebird()
+        eq_(dialect.server_version_info, None)
+        eq_(type_.compile(dialect=dialect), expected)
+
+    @testing.combinations(
+        ((3, 0, 12), "TIMESTAMP", "TIME"),
+        ((4, 0, 7), "TIMESTAMP WITHOUT TIME ZONE", "TIME WITHOUT TIME ZONE"),
+        ((5, 0, 3), "TIMESTAMP WITHOUT TIME ZONE", "TIME WITHOUT TIME ZONE"),
+        argnames="version, timestamp, time",
+    )
+    def test_known_server_version(self, version, timestamp, time):
+        dialect = FBDialect_firebird()
+        dialect.server_version_info = version
+        eq_(FbTypes.FBTIMESTAMP().compile(dialect=dialect), timestamp)
+        eq_(FbTypes.FBTIME().compile(dialect=dialect), time)
